@@ -7,7 +7,6 @@ import '../../../core/utils/constants.dart';
 import '../../../core/theme_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../auth_provider.dart';
-import '../data/user_model.dart';
 
 /// Login Screen
 /// Theme-aware login screen with gradient backgrounds
@@ -26,30 +25,45 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleSubmit() async {
     if (_formKey.currentState?.saveAndValidate() ?? false) {
-      setState(() => _isLoading = true);
-
       final formData = _formKey.currentState!.value;
       final email = formData['email'] as String;
+      final password = formData['password'] as String;
 
-      await Future.delayed(const Duration(seconds: 1));
+      setState(() => _isLoading = true);
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      authProvider.login(
-        User(id: '1', name: 'User', email: email),
-      );
 
-      setState(() => _isLoading = false);
+      try {
+        await authProvider.login(email: email, password: password);
 
-      if (mounted) {
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Login successful!'),
             backgroundColor: kSuccessColor,
           ),
         );
-        
-        // Navigate to dashboard after successful login
-        context.goNamed(Routes.dashboard);
+
+        // Navigate based on role
+        final role = authProvider.role;
+        if (role == 'admin') {
+          context.goNamed(Routes.admin);
+        } else {
+          context.goNamed(Routes.dashboard);
+        }
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: kErrorColor,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     } else {
       if (mounted) {

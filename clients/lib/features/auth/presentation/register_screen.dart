@@ -7,7 +7,6 @@ import '../../../core/utils/constants.dart';
 import '../../../core/theme_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../auth_provider.dart';
-import '../data/user_model.dart';
 
 /// Register Screen
 /// Theme-aware registration screen with form validation
@@ -25,35 +24,46 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
   Future<void> _handleSubmit() async {
     if (_formKey.currentState?.saveAndValidate() ?? false) {
-      setState(() => _isLoading = true);
-
       final formData = _formKey.currentState!.value;
       final name = formData['name'] as String;
       final email = formData['email'] as String;
+      final password = formData['password'] as String;
 
-      await Future.delayed(const Duration(seconds: 1));
+      setState(() => _isLoading = true);
 
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      authProvider.login(
-        User(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+
+      try {
+        // Call backend register and keep user on login screen afterwards.
+        await authProvider.register(
           name: name,
           email: email,
-        ),
-      );
+          password: password,
+        );
 
-      setState(() => _isLoading = false);
+        if (!mounted) return;
 
-      if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Registration successful!'),
+            content: Text('Registration successful! Please log in.'),
             backgroundColor: kSuccessColor,
           ),
         );
-        
-        // Navigate to dashboard after successful registration
-        context.goNamed(Routes.dashboard);
+
+        // Redirect to login after successful registration
+        context.goNamed(Routes.login);
+      } catch (e) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.toString()),
+            backgroundColor: kErrorColor,
+          ),
+        );
+      } finally {
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
       }
     } else {
       if (mounted) {

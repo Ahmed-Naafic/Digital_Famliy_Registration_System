@@ -18,9 +18,9 @@ class User {
   /// Used when receiving user data from API responses
   factory User.fromJson(Map<String, dynamic> json) {
     return User(
-      id: json['id'] as String,
-      name: json['name'] as String,
-      email: json['email'] as String,
+      id: (json['id'] ?? json['_id'] ?? '').toString(),
+      name: (json['name'] ?? json['fullName'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
     );
   }
 

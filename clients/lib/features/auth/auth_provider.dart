@@ -1,56 +1,119 @@
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'data/user_model.dart';
+import 'data/auth_service.dart';
 
 /// Authentication Provider
-/// Manages authentication state throughout the application using ChangeNotifier
-/// This provider holds the current user and login status, and notifies listeners
-/// when authentication state changes
+///
+/// Manages authentication state, including JWT token, user info, role,
+/// and persistence using [SharedPreferences].
 class AuthProvider extends ChangeNotifier {
-  /// Current logged-in user
-  /// null if user is not logged in
+  AuthProvider({AuthService? authService})
+    : _authService = authService ?? const AuthService();
+
+  static const _tokenKey = 'auth_token';
+  static const _userIdKey = 'auth_user_id';
+  static const _userNameKey = 'auth_user_name';
+  static const _userEmailKey = 'auth_user_email';
+  static const _roleKey = 'auth_role';
+
+  final AuthService _authService;
+
   User? _user;
+  String? _token;
+  String _role = 'citizen';
+  bool _isLoading = false;
+  bool _isInitialized = false;
 
-  /// Login status flag
-  /// true if user is logged in, false otherwise
-  bool _isLoggedIn = false;
-
-  /// Getter for current user
-  /// Returns null if no user is logged in
   User? get user => _user;
+  String? get token => _token;
+  String get role => _role;
+  bool get isAuthenticated => _token != null && _user != null;
+  bool get isLoggedIn => _token != null && _token!.isNotEmpty;
+  bool get isLoading => _isLoading;
+  bool get isInitialized => _isInitialized;
 
-  /// Getter for login status
-  /// Returns true if user is logged in
-  bool get isLoggedIn => _isLoggedIn;
+  /// Initialize auth state from local storage.
+  Future<void> init() async {
+    final prefs = await SharedPreferences.getInstance();
 
-  /// Login method
-  /// Sets the current user and updates login status
-  /// Notifies all listeners about the state change
-  ///
-  /// [user] - The user object to set as current user
-  void login(User user) {
-    _user = user;
-    _isLoggedIn = true;
+    final storedToken = prefs.getString(_tokenKey);
+    final storedId = prefs.getString(_userIdKey);
+    final storedName = prefs.getString(_userNameKey);
+    final storedEmail = prefs.getString(_userEmailKey);
+    final storedRole = prefs.getString(_roleKey);
+
+    if (storedToken != null &&
+        storedId != null &&
+        storedName != null &&
+        storedEmail != null) {
+      _token = storedToken;
+      _user = User(id: storedId, name: storedName, email: storedEmail);
+      _role = storedRole ?? 'citizen';
+    }
+
+    _isInitialized = true;
     notifyListeners();
   }
 
-  /// Logout method
-  /// Clears the current user and sets login status to false
-  /// Notifies all listeners about the state change
-  void logout() {
+  /// Perform login via [AuthService] and persist the session.
+  Future<void> login({required String email, required String password}) async {
+    await _authenticate(
+      action: () => _authService.login(email: email, password: password),
+    );
+  }
+
+  /// Perform registration via [AuthService] and persist the session.
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+  }) async {
+    await _authenticate(
+      action: () =>
+          _authService.register(name: name, email: email, password: password),
+    );
+  }
+
+  Future<void> _authenticate({
+    required Future<({String token, User user, String role})> Function() action,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+
+    try {
+      final result = await action();
+
+      _token = result.token;
+      _user = result.user;
+      _role = result.role;
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_tokenKey, result.token);
+      await prefs.setString(_userIdKey, result.user.id);
+      await prefs.setString(_userNameKey, result.user.name);
+      await prefs.setString(_userEmailKey, result.user.email);
+      await prefs.setString(_roleKey, result.role);
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
+  /// Clear auth state and remove token from storage.
+  Future<void> logout() async {
     _user = null;
-    _isLoggedIn = false;
-    notifyListeners();
-  }
+    _token = null;
+    _role = 'citizen';
 
-  /// Update user information
-  /// Updates the current user's data
-  /// Notifies all listeners about the state change
-  ///
-  /// [updatedUser] - The updated user object
-  void updateUser(User updatedUser) {
-    _user = updatedUser;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_tokenKey);
+    await prefs.remove(_userIdKey);
+    await prefs.remove(_userNameKey);
+    await prefs.remove(_userEmailKey);
+    await prefs.remove(_roleKey);
+
     notifyListeners();
   }
 }
-
-

@@ -5,14 +5,14 @@ export const register = async (req, res) => {
   try {
     const { fullName, email, phoneNumber, password } = req.body;
 
-    const user = await registerUser({
+    const result = await registerUser({
       fullName,
       email,
       phoneNumber,
       password,
     });
 
-    return successResponse(res, 'Registration successful', { user }, 201);
+    return successResponse(res, 'Registration successful', result, 201);
   } catch (error) {
     const statusCode = error.statusCode || 400;
     return errorResponse(res, error.message || 'Registration failed', statusCode);
@@ -34,5 +34,6 @@ export const login = async (req, res) => {
     return errorResponse(res, error.message || 'Login failed', statusCode);
   }
 };
+
 
 

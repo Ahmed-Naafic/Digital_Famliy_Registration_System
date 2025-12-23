@@ -69,31 +69,19 @@ class _DivorceRegistrationStep2PageState extends State<DivorceRegistrationStep2P
             ),
             const SizedBox(height: 16),
 
-            FormBuilderDropdown<String>(
+            FormBuilderTextField(
               name: 'reason',
               initialValue: provider.reason,
               decoration: InputDecoration(
-                labelText: 'Reason *',
+                labelText: 'Reason (Optional)',
+                hintText: 'Enter divorce reason if applicable',
                 prefixIcon: const Icon(Icons.description),
               ),
-              items: [
-                'Mutual Consent',
-                'Irreconcilable Differences',
-                'Abandonment',
-                'Other',
-              ]
-                  .map((reason) => DropdownMenuItem(
-                        value: reason,
-                        child: Text(reason),
-                      ))
-                  .toList(),
-              validator: FormBuilderValidators.required(),
+              maxLines: 3,
               onChanged: (value) {
-                if (value != null) {
-                  provider.updateReason(value);
-                }
+                provider.updateReason(value ?? '');
               },
-                    ),
+            ),
                   ],
                 ),
               ),

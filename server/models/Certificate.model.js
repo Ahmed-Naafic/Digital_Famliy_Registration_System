@@ -53,3 +53,6 @@ const certificateSchema = new Schema(
 export default mongoose.model('Certificate', certificateSchema);
 
 
+
+
+

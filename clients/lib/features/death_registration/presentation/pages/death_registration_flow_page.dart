@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/registration_layout.dart';
+import '../../../../core/widgets/family_guard.dart';
 import '../provider/death_form_provider.dart';
 import 'death_registration_step1_page.dart';
 import 'death_registration_step2_page.dart';
@@ -64,10 +65,11 @@ class _DeathRegistrationFlowPageState extends State<DeathRegistrationFlowPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DeathFormProvider(),
-      child: Consumer<DeathFormProvider>(
-        builder: (context, provider, child) {
+    return FamilyGuard(
+      child: ChangeNotifierProvider(
+        create: (_) => DeathFormProvider(),
+        child: Consumer<DeathFormProvider>(
+          builder: (context, provider, child) {
           final currentStep = provider.currentStep;
           final canProceed = currentStep == 0
               ? provider.isStep1Valid
@@ -115,6 +117,7 @@ class _DeathRegistrationFlowPageState extends State<DeathRegistrationFlowPage> {
             ),
           );
         },
+      ),
       ),
     );
   }

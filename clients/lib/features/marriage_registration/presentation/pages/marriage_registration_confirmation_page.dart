@@ -1,11 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/models/uploaded_document.dart';
-import '../../../../core/services/application_service.dart';
+import '../../../../features/applications/data/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
-import '../../../../features/application_status/data/application_model.dart';
 import '../provider/marriage_form_provider.dart';
 
 /// Marriage Registration Confirmation Page
@@ -26,15 +26,20 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
     MarriageFormProvider provider,
   ) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final applicationService = Provider.of<ApplicationService>(
-      context,
-      listen: false,
-    );
-    final user = authProvider.user;
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
 
-    if (user == null) {
+    if (token == null || token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please log in to submit applications')),
+      );
+      return;
+    }
+
+    // Validate that all required data is present
+    if (!provider.isFormComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields')),
       );
       return;
     }
@@ -46,25 +51,25 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
     );
 
     try {
-      final formData = {
-        'husbandName': provider.husbandName,
-        'husbandNationalId': provider.husbandNationalId,
-        'husbandDateOfBirth': provider.husbandDateOfBirth?.toIso8601String(),
-        'wifeName': provider.wifeName,
-        'wifeNationalId': provider.wifeNationalId,
-        'wifeDateOfBirth': provider.wifeDateOfBirth?.toIso8601String(),
-        'marriageDate': provider.marriageDate?.toIso8601String(),
-        'location': provider.location,
-        'witness1': provider.witness1,
-        'witness2': provider.witness2,
-        'documents': provider.documents.map((doc) => doc.toJson()).toList(),
-      };
+      debugPrint('=== MARRIAGE SUBMISSION STARTED ===');
+      
+      // Build complete payload from provider (structured format)
+      final payload = provider.buildPayload();
+      debugPrint('Payload built: $payload');
 
+      // Get actual File objects from documents
+      final documentFiles = provider.getDocumentFiles();
+      debugPrint('Document files: ${documentFiles.length}');
+
+      // Submit application to backend with files
+      debugPrint('Calling applicationService.submitApplication...');
       await applicationService.submitApplication(
-        user: user,
-        type: ApplicationType.marriage,
-        formData: formData,
+        type: 'marriage',
+        payload: payload,
+        token: token,
+        documents: documentFiles,
       );
+      debugPrint('=== MARRIAGE SUBMISSION SUCCESS ===');
 
       if (context.mounted) {
         Navigator.pop(context);
@@ -88,7 +93,10 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('=== MARRIAGE SUBMISSION ERROR ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -193,7 +201,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                         ),
                         trailing: TextButton(
                           onPressed: () => _onEditStep(context, provider, 1),
-                          child: const Text('Edit Wife & Marriage Details'),
+                          child: const Text('Edit Wife Details'),
                         ),
                       ),
                       const Divider(height: 1),
@@ -212,6 +220,64 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           context,
                           'National ID',
                           provider.wifeNationalId!,
+                        ),
+                      if (provider.wifeAddress != null &&
+                          provider.wifeAddress!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Address',
+                          provider.wifeAddress!,
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Witness Details
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(
+                          Icons.people,
+                          color: colorScheme.primary,
+                        ),
+                        title: Text(
+                          'Witness Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 2),
+                          child: const Text('Edit Witness Details'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      _buildInfoTile(
+                        context,
+                        'Witness 1 Name',
+                        provider.witness1 ?? '',
+                      ),
+                      if (provider.witness1NationalId != null &&
+                          provider.witness1NationalId!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Witness 1 National ID',
+                          provider.witness1NationalId!,
+                        ),
+                      _buildInfoTile(
+                        context,
+                        'Witness 2 Name',
+                        provider.witness2 ?? '',
+                      ),
+                      if (provider.witness2NationalId != null &&
+                          provider.witness2NationalId!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Witness 2 National ID',
+                          provider.witness2NationalId!,
                         ),
                     ],
                   ),
@@ -235,7 +301,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 1),
+                          onPressed: () => _onEditStep(context, provider, 3),
                           child: const Text('Edit Marriage Details'),
                         ),
                       ),
@@ -252,16 +318,6 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                         context,
                         'Location',
                         provider.location ?? '',
-                      ),
-                      _buildInfoTile(
-                        context,
-                        'Witness 1',
-                        provider.witness1 ?? '',
-                      ),
-                      _buildInfoTile(
-                        context,
-                        'Witness 2',
-                        provider.witness2 ?? '',
                       ),
                     ],
                   ),
@@ -285,7 +341,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 2),
+                          onPressed: () => _onEditStep(context, provider, 3),
                           child: const Text('Edit Documents'),
                         ),
                       ),

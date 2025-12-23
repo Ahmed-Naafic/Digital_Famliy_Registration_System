@@ -30,7 +30,27 @@ export const registerUser = async ({ fullName, email, phoneNumber, password }) =
     role: 'citizen',
   });
 
-  return buildUserResponse(user);
+  if (!process.env.JWT_SECRET) {
+    const error = new Error('JWT_SECRET is not configured');
+    error.statusCode = 500;
+    throw error;
+  }
+
+  const token = jwt.sign(
+    {
+      sub: user._id.toString(),
+      role: user.role,
+    },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: JWT_EXPIRES_IN,
+    },
+  );
+
+  return {
+    token,
+    user: buildUserResponse(user),
+  };
 };
 
 export const loginUser = async ({ email, password }) => {
@@ -72,5 +92,6 @@ export const loginUser = async ({ email, password }) => {
     user: buildUserResponse(user),
   };
 };
+
 
 

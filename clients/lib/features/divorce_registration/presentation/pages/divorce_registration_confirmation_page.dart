@@ -3,9 +3,8 @@ import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/models/uploaded_document.dart';
-import '../../../../core/services/application_service.dart';
+import '../../../../features/applications/data/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
-import '../../../../features/application_status/data/application_model.dart';
 import '../provider/divorce_form_provider.dart';
 
 /// Divorce Registration Confirmation Page
@@ -25,16 +24,25 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
     BuildContext context,
     DivorceFormProvider provider,
   ) async {
+    debugPrint('=== DIVORCE SUBMISSION STARTED ===');
+    
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final applicationService = Provider.of<ApplicationService>(
-      context,
-      listen: false,
-    );
-    final user = authProvider.user;
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
 
-    if (user == null) {
+    if (token == null || token.isEmpty) {
+      debugPrint('ERROR: No token found');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please log in to submit applications')),
+      );
+      return;
+    }
+
+    // Validate that all required data is present
+    if (!provider.isFormComplete) {
+      debugPrint('ERROR: Form is not complete');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields')),
       );
       return;
     }
@@ -46,19 +54,23 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
     );
 
     try {
-      final formData = {
-        'husbandName': provider.husbandName,
-        'wifeName': provider.wifeName,
-        'divorceDate': provider.divorceDate?.toIso8601String(),
-        'reason': provider.reason,
-        'documents': provider.documents.map((doc) => doc.toJson()).toList(),
-      };
+      // Build complete payload from provider (structured format)
+      final payload = provider.buildPayload();
+      debugPrint('Payload built: $payload');
 
+      // Get actual File objects from documents
+      final documentFiles = provider.getDocumentFiles();
+      debugPrint('Document files: ${documentFiles.length}');
+
+      // Submit application to backend with files
+      debugPrint('Calling applicationService.submitApplication...');
       await applicationService.submitApplication(
-        user: user,
-        type: ApplicationType.divorce,
-        formData: formData,
+        type: 'divorce',
+        payload: payload,
+        token: token,
+        documents: documentFiles,
       );
+      debugPrint('=== DIVORCE SUBMISSION SUCCESS ===');
 
       if (context.mounted) {
         Navigator.pop(context);
@@ -82,7 +94,10 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('=== DIVORCE SUBMISSION ERROR ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -146,16 +161,20 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
                         ),
                         trailing: TextButton(
                           onPressed: () => _onEditStep(context, provider, 0),
-                          child: const Text('Edit Couple Details'),
+                          child: const Text('Edit Couple'),
                         ),
                       ),
                       const Divider(height: 1),
                       _buildInfoTile(
                         context,
                         'Husband',
-                        provider.husbandName ?? '',
+                        provider.husbandName ?? 'Not selected',
                       ),
-                      _buildInfoTile(context, 'Wife', provider.wifeName ?? ''),
+                      _buildInfoTile(
+                        context,
+                        'Wife',
+                        provider.wifeName ?? 'Not selected',
+                      ),
                     ],
                   ),
                 ),
@@ -178,8 +197,8 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 0),
-                          child: const Text('Edit Couple Details'),
+                          onPressed: () => _onEditStep(context, provider, 1),
+                          child: const Text('Edit Details'),
                         ),
                       ),
                       const Divider(height: 1),
@@ -190,8 +209,20 @@ class DivorceRegistrationConfirmationPage extends StatelessWidget {
                           DateFormat(
                             'yyyy-MM-dd',
                           ).format(provider.divorceDate!),
+                        )
+                      else
+                        _buildInfoTile(
+                          context,
+                          'Divorce Date',
+                          'Not set',
                         ),
-                      _buildInfoTile(context, 'Reason', provider.reason ?? ''),
+                      _buildInfoTile(
+                        context,
+                        'Reason',
+                        provider.reason?.isNotEmpty == true
+                            ? provider.reason!
+                            : 'Not provided',
+                      ),
                     ],
                   ),
                 ),

@@ -7,7 +7,9 @@ import '../../../../core/theme_provider.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../../core/services/application_service.dart';
 import '../../../../features/application_status/data/application_model.dart';
+import '../../../../features/applications/providers/application_provider.dart';
 import '../../auth/auth_provider.dart';
+import '../../family/providers/family_provider.dart';
 import 'widgets/sidebar_widget.dart';
 import 'widgets/quick_action_card.dart';
 import 'widgets/certificate_card.dart';
@@ -42,6 +44,28 @@ class _DashboardScreenState extends State<DashboardScreen> {
   ];
 
   // _familyMembers list removed - now handled by FamilyProfilePage
+
+  @override
+  void initState() {
+    super.initState();
+    // Fetch applications when dashboard loads
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _fetchApplications();
+    });
+  }
+
+  /// Fetch applications from backend
+  /// Uses context.read() for one-time action (not for UI building)
+  void _fetchApplications() {
+    final authProvider = context.read<AuthProvider>();
+    final applicationProvider = context.read<ApplicationProvider>();
+    final token = authProvider.token;
+
+    if (token != null && token.isNotEmpty) {
+      // Fetch fresh data from backend
+      applicationProvider.fetchMyApplications(token: token);
+    }
+  }
 
   Widget _buildHomeTab(BuildContext context, AuthProvider authProvider) {
     final themeProvider = Provider.of<ThemeProvider>(context);
@@ -193,15 +217,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
             const SizedBox(height: kDefaultPadding),
-            Consumer<ApplicationService>(
-              builder: (context, applicationService, child) {
-                final user = authProvider.user;
-                if (user == null) {
-                  return const SizedBox.shrink();
+            Consumer<ApplicationProvider>(
+              builder: (context, applicationProvider, child) {
+                // Show loading state if fetching
+                if (applicationProvider.isLoading) {
+                  return Card(
+                    color: isDark ? kDarkCardColor : Colors.white,
+                    child: const Padding(
+                      padding: EdgeInsets.all(kDefaultPadding * 2),
+                      child: Center(
+                        child: CircularProgressIndicator(),
+                      ),
+                    ),
+                  );
                 }
 
-                final recentApps = applicationService
-                    .getRecentApplicationsForCitizen(user.id, limit: 5);
+                // Get recent applications from provider
+                final recentApps = applicationProvider.recentApplications;
 
                 if (recentApps.isEmpty) {
                   return Card(
@@ -223,11 +255,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 return Column(
                   children: recentApps
                       .map(
-                        (app) => _buildApplicationCard(
+                        (app) => _buildRecentApplicationCard(
                           context,
                           app,
                           isDark,
-                          applicationService,
                         ),
                       )
                       .toList(),
@@ -571,6 +602,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   authProvider.logout();
+                  // Clear family state on logout
+                  final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+                  familyProvider.reset();
                   context.goNamed(Routes.login);
                   _showSnackBar(
                     context,
@@ -729,6 +763,70 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case ApplicationStatus.pending:
         return Colors.orange;
     }
+  }
+
+  /// Build a simple application card for Recent Applications section
+  /// Shows application type, status, and submission date
+  /// No admin actions (approve/reject)
+  Widget _buildRecentApplicationCard(
+    BuildContext context,
+    Application app,
+    bool isDark,
+  ) {
+    final dateFormat = DateFormat('yyyy-MM-dd');
+    final statusColor = _getStatusColor(app.status);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Card(
+      color: isDark ? kDarkCardColor : Colors.white,
+      margin: const EdgeInsets.only(bottom: kDefaultPadding * 0.75),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: ListTile(
+        leading: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            app.serviceType.icon,
+            color: colorScheme.primary,
+            size: 24,
+          ),
+        ),
+        title: Text(
+          app.serviceType.displayName,
+          style: TextStyle(
+            color: isDark ? Colors.white : Colors.black87,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        subtitle: Text(
+          'Submitted: ${dateFormat.format(app.submittedAt)}',
+          style: TextStyle(
+            color: isDark ? Colors.grey[400] : Colors.grey[600],
+          ),
+        ),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: statusColor.withOpacity(0.15),
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: statusColor.withOpacity(0.3)),
+          ),
+          child: Text(
+            app.status.displayName,
+            style: TextStyle(
+              color: statusColor,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _handleApproveApplication(

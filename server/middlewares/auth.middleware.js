@@ -1,6 +1,11 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.model.js';
 
+/**
+ * Authentication middleware
+ * Verifies JWT token from Authorization header and attaches user to req.user
+ * Throws errors that should be handled by error middleware
+ */
 export const authMiddleware = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization || '';
@@ -9,28 +14,32 @@ export const authMiddleware = async (req, res, next) => {
       : null;
 
     if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Authentication token missing',
-      });
+      const error = new Error('Authentication token missing');
+      error.statusCode = 401;
+      throw error;
     }
 
     if (!process.env.JWT_SECRET) {
-      return res.status(500).json({
-        success: false,
-        message: 'JWT_SECRET is not configured',
-      });
+      const error = new Error('JWT_SECRET is not configured');
+      error.statusCode = 500;
+      throw error;
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET);
+    } catch (jwtError) {
+      const error = new Error('Invalid or expired authentication token');
+      error.statusCode = 401;
+      throw error;
+    }
 
     const user = await User.findById(decoded.sub);
 
     if (!user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Invalid authentication token',
-      });
+      const error = new Error('Invalid authentication token');
+      error.statusCode = 401;
+      throw error;
     }
 
     req.user = {
@@ -40,13 +49,12 @@ export const authMiddleware = async (req, res, next) => {
       role: user.role,
     };
 
-    return next();
+    next();
   } catch (error) {
-    return res.status(401).json({
-      success: false,
-      message: 'Authentication failed',
-    });
+    next(error);
   }
 };
+
+
 
 

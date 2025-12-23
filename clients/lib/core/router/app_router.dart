@@ -16,6 +16,7 @@ import '../../features/marriage_registration/presentation/pages/marriage_registr
 import '../../features/divorce_registration/presentation/pages/divorce_registration_flow_page.dart';
 import '../../features/death_registration/presentation/pages/death_registration_flow_page.dart';
 import '../../features/family_profile/presentation/pages/family_profile_page.dart';
+import '../../features/family_profile/presentation/pages/create_family_page.dart';
 import '../../features/application_status/presentation/pages/application_status_page.dart';
 import '../../features/certificate_viewer/presentation/pages/certificate_viewer_page.dart';
 import 'route_names.dart';
@@ -49,9 +50,14 @@ final GoRouter appRouter = GoRouter(
       return '/login';
     }
 
-    // If logged in and on auth routes, send to appropriate dashboard.
+    // If logged in and on auth routes, check family status for citizens
     if (loggedIn && isAuthRoute) {
-      return role == 'admin' ? '/admin' : '/dashboard';
+      if (role == 'admin') {
+        return '/admin';
+      } else {
+        // For citizens, check family status (will be checked in splash/login)
+        return '/dashboard';
+      }
     }
 
     // Role-based restrictions for admin vs citizen routes.
@@ -147,6 +153,11 @@ final GoRouter appRouter = GoRouter(
       path: '/family-profile',
       name: Routes.familyProfile,
       builder: (context, state) => const FamilyProfilePage(),
+    ),
+    GoRoute(
+      path: '/create-family',
+      name: Routes.createFamily,
+      builder: (context, state) => const CreateFamilyPage(),
     ),
     GoRoute(
       path: '/application-status',

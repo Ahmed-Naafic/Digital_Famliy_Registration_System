@@ -2,10 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
+import 'package:flutter/foundation.dart';
 import '../../../../core/models/uploaded_document.dart';
-import '../../../../core/services/application_service.dart';
+import '../../../../features/applications/data/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
-import '../../../../features/application_status/data/application_model.dart';
 import '../provider/death_form_provider.dart';
 
 /// Death Registration Confirmation Page
@@ -21,16 +21,25 @@ class DeathRegistrationConfirmationPage extends StatelessWidget {
     BuildContext context,
     DeathFormProvider provider,
   ) async {
+    debugPrint('=== DEATH SUBMISSION STARTED ===');
+    
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final applicationService = Provider.of<ApplicationService>(
-      context,
-      listen: false,
-    );
-    final user = authProvider.user;
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
 
-    if (user == null) {
+    if (token == null || token.isEmpty) {
+      debugPrint('ERROR: No token found');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please log in to submit applications')),
+      );
+      return;
+    }
+
+    // Validate that all required data is present
+    if (!provider.isFormComplete) {
+      debugPrint('ERROR: Form is not complete');
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields')),
       );
       return;
     }
@@ -42,22 +51,23 @@ class DeathRegistrationConfirmationPage extends StatelessWidget {
     );
 
     try {
-      final formData = {
-        'deceasedName': provider.deceasedName,
-        'dateOfDeath': provider.dateOfDeath?.toIso8601String(),
-        'placeOfDeath': provider.placeOfDeath,
-        'causeOfDeath': provider.causeOfDeath,
-        'reporterName': provider.reporterName,
-        'reporterRelationship': provider.reporterRelationship,
-        'reporterContact': provider.reporterContact,
-        'documents': provider.documents.map((doc) => doc.toJson()).toList(),
-      };
+      // Build complete payload from provider (structured format)
+      final payload = provider.buildPayload();
+      debugPrint('Payload built: $payload');
 
+      // Get actual File objects from documents
+      final documentFiles = provider.getDocumentFiles();
+      debugPrint('Document files: ${documentFiles.length}');
+
+      // Submit application to backend with files
+      debugPrint('Calling applicationService.submitApplication...');
       await applicationService.submitApplication(
-        user: user,
-        type: ApplicationType.death,
-        formData: formData,
+        type: 'death',
+        payload: payload,
+        token: token,
+        documents: documentFiles,
       );
+      debugPrint('=== DEATH SUBMISSION SUCCESS ===');
 
       if (context.mounted) {
         Navigator.pop(context);
@@ -81,7 +91,10 @@ class DeathRegistrationConfirmationPage extends StatelessWidget {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('=== DEATH SUBMISSION ERROR ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (context.mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(

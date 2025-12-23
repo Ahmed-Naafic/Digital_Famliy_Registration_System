@@ -5,6 +5,7 @@ import '../../../core/utils/constants.dart';
 import '../../../core/theme_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../auth_provider.dart';
+import '../../family/providers/family_provider.dart';
 
 /// Splash/Onboarding Screen
 /// Theme-aware onboarding screen with gradient backgrounds
@@ -22,11 +23,60 @@ class _SplashScreenState extends State<SplashScreen> {
   /// Current page index for onboarding
   int _currentPage = 0;
 
-  /// Navigate to the next screen based on auth state
-  void _navigateToNextScreen() {
+  @override
+  void initState() {
+    super.initState();
+    _initializeAuth();
+  }
+
+  /// Initialize auth and navigate based on token state
+  Future<void> _initializeAuth() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Wait for auth to initialize if not already done
+    if (!authProvider.isInitialized) {
+      await authProvider.init();
+    }
+
+    // Wait a moment for UI to settle, then navigate
+    if (!mounted) return;
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Navigate based on token state
+    if (!mounted) return;
+    await _navigateToNextScreen();
+  }
+
+  /// Navigate to the next screen based on auth state
+  Future<void> _navigateToNextScreen() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    
+    // Strict check: token must exist AND be non-empty
     if (authProvider.isLoggedIn) {
-      context.goNamed(Routes.dashboard);
+      // Check if user has a family (for citizens)
+      if (authProvider.role == 'citizen') {
+        final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+        final token = authProvider.token;
+        
+        if (token != null && token.isNotEmpty) {
+          await familyProvider.checkFamily(token: token);
+          
+          if (!mounted) return;
+          
+          // Navigate based on family status
+          if (familyProvider.hasFamily) {
+            context.goNamed(Routes.dashboard);
+          } else {
+            // Redirect to create family page
+            context.goNamed(Routes.createFamily);
+          }
+        } else {
+          context.goNamed(Routes.dashboard);
+        }
+      } else {
+        // Admin goes directly to admin dashboard
+        context.goNamed(Routes.admin);
+      }
     } else {
       context.goNamed(Routes.login);
     }

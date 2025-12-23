@@ -5,6 +5,7 @@ import '../../../../core/utils/constants.dart';
 import '../../../../core/theme_provider.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../auth/auth_provider.dart';
+import '../../../family/providers/family_provider.dart';
 
 /// Sidebar Widget
 /// Modern theme-aware drawer widget with gradient header
@@ -224,6 +225,9 @@ class SidebarWidget extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context);
                     authProvider.logout();
+                    // Clear family state on logout
+                    final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+                    familyProvider.reset();
                     context.goNamed(Routes.login);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(

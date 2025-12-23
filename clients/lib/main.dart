@@ -5,6 +5,8 @@ import 'core/theme_provider.dart';
 import 'core/router/app_router.dart';
 import 'core/services/application_service.dart';
 import 'features/auth/auth_provider.dart';
+import 'features/applications/providers/application_provider.dart';
+import 'features/family/providers/family_provider.dart';
 
 void main() {
   runApp(const MyApp());
@@ -27,6 +29,10 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
         // Provide ApplicationService for applications and certificates
         ChangeNotifierProvider(create: (_) => ApplicationService()),
+        // Provide ApplicationProvider for fetching applications from backend
+        ChangeNotifierProvider(create: (_) => ApplicationProvider()),
+        // Provide FamilyProvider for family state management
+        ChangeNotifierProvider(create: (_) => FamilyProvider()),
       ],
       child: Consumer<ThemeProvider>(
         builder: (context, themeProvider, child) {

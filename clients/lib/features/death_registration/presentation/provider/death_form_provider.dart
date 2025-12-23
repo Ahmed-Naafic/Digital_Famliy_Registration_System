@@ -1,10 +1,12 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../../../../core/models/uploaded_document.dart';
 
 /// Death Registration Form Provider
 class DeathFormProvider extends ChangeNotifier {
-  // Step 1: Deceased Details
-  String? _deceasedName;
+  // Step 1: Deceased Details (using ID from existing family members)
+  String? _deceasedId;
+  String? _deceasedName; // For display only
   DateTime? _dateOfDeath;
   String? _placeOfDeath;
   String? _causeOfDeath;
@@ -21,7 +23,8 @@ class DeathFormProvider extends ChangeNotifier {
   int _currentStep = 0;
 
   // Getters
-  String? get deceasedName => _deceasedName;
+  String? get deceasedId => _deceasedId;
+  String? get deceasedName => _deceasedName; // Display name
   DateTime? get dateOfDeath => _dateOfDeath;
   String? get placeOfDeath => _placeOfDeath;
   String? get causeOfDeath => _causeOfDeath;
@@ -33,8 +36,8 @@ class DeathFormProvider extends ChangeNotifier {
 
   // Validation
   bool get isStep1Valid =>
-      _deceasedName != null &&
-      _deceasedName!.isNotEmpty &&
+      _deceasedId != null &&
+      _deceasedId!.isNotEmpty &&
       _dateOfDeath != null &&
       _placeOfDeath != null &&
       _placeOfDeath!.isNotEmpty &&
@@ -52,8 +55,9 @@ class DeathFormProvider extends ChangeNotifier {
   bool get isFormComplete => isStep1Valid && isStep2Valid && isStep3Valid;
 
   // Update methods
-  void updateDeceasedName(String value) {
-    _deceasedName = value;
+  void updateDeceasedId(String? id, String? name) {
+    _deceasedId = id;
+    _deceasedName = name;
     notifyListeners();
   }
 
@@ -98,6 +102,7 @@ class DeathFormProvider extends ChangeNotifier {
   }
 
   void reset() {
+    _deceasedId = null;
     _deceasedName = null;
     _dateOfDeath = null;
     _placeOfDeath = null;
@@ -108,6 +113,37 @@ class DeathFormProvider extends ChangeNotifier {
     _documents = [];
     _currentStep = 0;
     notifyListeners();
+  }
+
+  /// Build complete payload for API submission
+  /// Returns payload in structured format matching backend expectations
+  Map<String, dynamic> buildPayload() {
+    return {
+      'deceasedId': _deceasedId,
+      if (_dateOfDeath != null) 'dateOfDeath': _dateOfDeath!.toIso8601String(),
+      if (_placeOfDeath != null && _placeOfDeath!.isNotEmpty)
+        'placeOfDeath': _placeOfDeath,
+      if (_causeOfDeath != null && _causeOfDeath!.isNotEmpty)
+        'causeOfDeath': _causeOfDeath,
+      'reporter': {
+        if (_reporterName != null && _reporterName!.isNotEmpty)
+          'name': _reporterName,
+        if (_reporterRelationship != null &&
+            _reporterRelationship!.isNotEmpty)
+          'relationship': _reporterRelationship,
+        if (_reporterContact != null && _reporterContact!.isNotEmpty)
+          'contact': _reporterContact,
+      },
+    };
+  }
+
+  /// Get documents as File objects for API submission
+  /// Documents are uploaded separately, not included in payload
+  List<File> getDocumentFiles() {
+    return _documents
+        .map((doc) => doc.file)
+        .where((file) => file.existsSync())
+        .toList();
   }
 
   Map<String, dynamic> toJson() {

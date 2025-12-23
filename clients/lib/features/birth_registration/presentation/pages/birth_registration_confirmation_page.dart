@@ -1,11 +1,11 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/models/uploaded_document.dart';
-import '../../../../core/services/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
-import '../../../../features/application_status/data/application_model.dart';
+import '../../../../features/applications/data/application_service.dart';
 import '../provider/birth_form_provider.dart';
 
 /// Birth Registration Confirmation Page
@@ -23,15 +23,20 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
     BirthFormProvider provider,
   ) async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final applicationService = Provider.of<ApplicationService>(
-      context,
-      listen: false,
-    );
-    final user = authProvider.user;
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
 
-    if (user == null) {
+    if (token == null || token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please log in to submit applications')),
+      );
+      return;
+    }
+
+    // Validate that all required data is present
+    if (!provider.isFormComplete) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please complete all required fields')),
       );
       return;
     }
@@ -43,24 +48,28 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
     );
 
     try {
-      // Prepare form data
-      final formData = {
-        'childName': provider.childName,
-        'dateOfBirth': provider.dateOfBirth?.toIso8601String(),
-        'placeOfBirth': provider.placeOfBirth,
-        'gender': provider.gender,
-        'fatherName': provider.fatherName,
-        'motherName': provider.motherName,
-        'nationalId': provider.nationalId,
-        'documents': provider.documents.map((doc) => doc.toJson()).toList(),
-      };
+      debugPrint('=== BIRTH SUBMISSION STARTED ===');
+      
+      // Build complete payload from provider
+      final payload = provider.buildPayload();
+      debugPrint('Payload built: $payload');
+      
+      // Get actual File objects from documents
+      final documentFiles = provider.documents
+          .map((doc) => doc.file)
+          .where((file) => file.existsSync())
+          .toList();
+      debugPrint('Document files: ${documentFiles.length}');
 
-      // Submit application
+      // Submit application to backend with files
+      debugPrint('Calling applicationService.submitApplication...');
       await applicationService.submitApplication(
-        user: user,
-        type: ApplicationType.birth,
-        formData: formData,
+        type: 'birth',
+        payload: payload,
+        token: token,
+        documents: documentFiles,
       );
+      debugPrint('=== BIRTH SUBMISSION SUCCESS ===');
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
@@ -85,11 +94,16 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
           ),
         );
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
+      debugPrint('=== BIRTH SUBMISSION ERROR ===');
+      debugPrint('Error: $e');
+      debugPrint('Stack trace: $stackTrace');
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error submitting application: $e')),
+          SnackBar(
+            content: Text('Error submitting application: ${e.toString()}'),
+          ),
         );
       }
     }
@@ -203,13 +217,6 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
                         'Mother\'s Name',
                         provider.motherName ?? '',
                       ),
-                      if (provider.nationalId != null &&
-                          provider.nationalId!.isNotEmpty)
-                        _buildInfoTile(
-                          context,
-                          'National ID',
-                          provider.nationalId!,
-                        ),
                     ],
                   ),
                 ),

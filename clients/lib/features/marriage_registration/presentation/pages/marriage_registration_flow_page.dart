@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/registration_layout.dart';
+import '../../../../core/widgets/family_guard.dart';
 import '../provider/marriage_form_provider.dart';
 import 'marriage_registration_step1_page.dart';
 import 'marriage_registration_step2_page.dart';
 import 'marriage_registration_step3_page.dart';
+import 'marriage_registration_step4_page.dart';
 import 'marriage_registration_confirmation_page.dart';
 
 /// Marriage Registration Flow Page
@@ -21,7 +23,7 @@ class MarriageRegistrationFlowPage extends StatefulWidget {
 class _MarriageRegistrationFlowPageState
     extends State<MarriageRegistrationFlowPage> {
   final PageController _pageController = PageController();
-  final int _totalSteps = 3; // Changed from 4 since confirmation is separate
+  final int _totalSteps = 4; // Step 1: Husband, Step 2: Wife, Step 3: Witness, Step 4: Marriage Details & Documents
 
   @override
   void dispose() {
@@ -66,16 +68,19 @@ class _MarriageRegistrationFlowPageState
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => MarriageFormProvider(),
-      child: Consumer<MarriageFormProvider>(
+    return FamilyGuard(
+      child: ChangeNotifierProvider(
+        create: (_) => MarriageFormProvider(),
+        child: Consumer<MarriageFormProvider>(
         builder: (context, provider, child) {
           final currentStep = provider.currentStep;
           final canProceed = currentStep == 0
               ? provider.isStep1Valid
               : currentStep == 1
               ? provider.isStep2Valid
-              : provider.isStep3Valid;
+              : currentStep == 2
+              ? provider.isStep3Valid
+              : provider.isStep4Valid;
 
           // Sync PageController with provider's currentStep
           if (_pageController.hasClients &&
@@ -110,13 +115,15 @@ class _MarriageRegistrationFlowPageState
                 provider.updateCurrentStep(index);
               },
               children: const [
-                MarriageRegistrationStep1Page(),
-                MarriageRegistrationStep2Page(),
-                MarriageRegistrationStep3Page(),
+                MarriageRegistrationStep1Page(), // Step 1: Husband Information
+                MarriageRegistrationStep2Page(), // Step 2: Wife Information ONLY
+                MarriageRegistrationStep3Page(), // Step 3: Witness Information ONLY
+                MarriageRegistrationStep4Page(), // Step 4: Marriage Details & Documents
               ],
             ),
           );
         },
+      ),
       ),
     );
   }

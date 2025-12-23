@@ -10,10 +10,11 @@ class BirthFormProvider extends ChangeNotifier {
   String? _placeOfBirth;
   String? _gender;
 
-  // Step 2: Parent Details
-  String? _fatherName;
-  String? _motherName;
-  String? _nationalId;
+  // Step 2: Parent Details (using IDs from existing family members)
+  String? _fatherId;
+  String? _motherId;
+  String? _fatherName; // For display only
+  String? _motherName; // For display only
 
   // Step 3: Documents
   List<UploadedDocument> _documents = [];
@@ -26,9 +27,10 @@ class BirthFormProvider extends ChangeNotifier {
   DateTime? get dateOfBirth => _dateOfBirth;
   String? get placeOfBirth => _placeOfBirth;
   String? get gender => _gender;
-  String? get fatherName => _fatherName;
-  String? get motherName => _motherName;
-  String? get nationalId => _nationalId;
+  String? get fatherId => _fatherId;
+  String? get motherId => _motherId;
+  String? get fatherName => _fatherName; // Display name
+  String? get motherName => _motherName; // Display name
   List<UploadedDocument> get documents => List.unmodifiable(_documents);
   int get currentStep => _currentStep;
 
@@ -43,10 +45,10 @@ class BirthFormProvider extends ChangeNotifier {
       _gender!.isNotEmpty;
 
   bool get isStep2Valid =>
-      _fatherName != null &&
-      _fatherName!.isNotEmpty &&
-      _motherName != null &&
-      _motherName!.isNotEmpty;
+      _fatherId != null &&
+      _fatherId!.isNotEmpty &&
+      _motherId != null &&
+      _motherId!.isNotEmpty;
 
   bool get isStep3Valid => _documents.isNotEmpty;
 
@@ -73,18 +75,15 @@ class BirthFormProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void updateFatherName(String value) {
-    _fatherName = value;
+  void updateFatherId(String? id, String? name) {
+    _fatherId = id;
+    _fatherName = name;
     notifyListeners();
   }
 
-  void updateMotherName(String value) {
-    _motherName = value;
-    notifyListeners();
-  }
-
-  void updateNationalId(String value) {
-    _nationalId = value;
+  void updateMotherId(String? id, String? name) {
+    _motherId = id;
+    _motherName = name;
     notifyListeners();
   }
 
@@ -104,24 +103,46 @@ class BirthFormProvider extends ChangeNotifier {
     _dateOfBirth = null;
     _placeOfBirth = null;
     _gender = null;
+    _fatherId = null;
+    _motherId = null;
     _fatherName = null;
     _motherName = null;
-    _nationalId = null;
     _documents = [];
     _currentStep = 0;
     notifyListeners();
   }
 
-  // Get form data as map (for future API integration)
+  /// Build complete payload for API submission
+  /// Returns payload using IDs from existing family members
+  Map<String, dynamic> buildPayload() {
+    return {
+      'child': {
+        'name': _childName,
+        'dateOfBirth': _dateOfBirth?.toIso8601String(),
+        'placeOfBirth': _placeOfBirth,
+        'gender': _gender,
+      },
+      'fatherId': _fatherId,
+      'motherId': _motherId,
+    };
+  }
+
+  /// Get documents as JSON for API submission
+  List<Map<String, dynamic>> getDocumentsJson() {
+    return _documents.map((doc) => doc.toJson()).toList();
+  }
+
+  // Get form data as map (for backward compatibility)
   Map<String, dynamic> toJson() {
     return {
       'childName': _childName,
       'dateOfBirth': _dateOfBirth?.toIso8601String(),
       'placeOfBirth': _placeOfBirth,
       'gender': _gender,
+      'fatherId': _fatherId,
+      'motherId': _motherId,
       'fatherName': _fatherName,
       'motherName': _motherName,
-      'nationalId': _nationalId,
     };
   }
 }

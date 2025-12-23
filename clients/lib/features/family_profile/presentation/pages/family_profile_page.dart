@@ -1,41 +1,139 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:provider/provider.dart';
+import 'package:intl/intl.dart';
+import '../../../../features/applications/data/application_service.dart';
+import '../../../../features/auth/auth_provider.dart';
+import '../../../../core/router/route_names.dart';
+import 'add_family_member_page.dart';
 
 /// Family Profile Page
 /// Displays family information and members
 /// Theme-aware with Material 3 design
-class FamilyProfilePage extends StatelessWidget {
+class FamilyProfilePage extends StatefulWidget {
   const FamilyProfilePage({super.key});
 
-  // Mock family data
-  final List<Map<String, dynamic>> _familyMembers = const [
-    {
-      'name': 'Mohamud Ahmed Jimale ',
-      'relationship': 'Head of Family',
-      'age': 45,
-    },
-    {
-      'name': 'Ahmednor Mahad Ahmed Jimale ',
-      'relationship': 'Spouse',
-      'age': 42,
-    },
-    {'name': 'Hasan Geedi Faarah Jimale', 'relationship': 'Child', 'age': 18},
-    {'name': 'Fahmo Ali Jimale', 'relationship': 'Child', 'age': 15},
-  ];
+  @override
+  State<FamilyProfilePage> createState() => _FamilyProfilePageState();
+}
 
-  void _handleAddMember(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Add Family Member feature coming soon')),
+class _FamilyProfilePageState extends State<FamilyProfilePage> {
+  List<Map<String, dynamic>> _familyMembers = [];
+  bool _isLoading = true;
+  String? _error;
+  String? _familyName;
+  String? _headOfFamilyName;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFamilyMembers();
+  }
+
+  Future<void> _loadFamilyMembers() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
+
+    if (token == null || token.isEmpty) {
+      setState(() {
+        _error = 'Please log in to view family members';
+        _isLoading = false;
+      });
+      return;
+    }
+
+    try {
+      final members = await applicationService.getFamilyMembers(token: token);
+      setState(() {
+        _familyMembers = members;
+        // Set family name from first member or use default
+        if (members.isNotEmpty) {
+          _familyName = '${members[0]['lastName']} Family';
+          // Find head of family (could be first member or marked as head)
+          final headMember = members.firstWhere(
+            (m) => m['maritalStatus'] == 'married' || m['status'] == 'alive',
+            orElse: () => members[0],
+          );
+          _headOfFamilyName = headMember['fullName'] as String? ?? 'N/A';
+        } else {
+          _familyName = 'Your Family';
+          _headOfFamilyName = 'Not set';
+        }
+        _isLoading = false;
+      });
+    } catch (e) {
+      final errorMessage = e.toString();
+      // Check if error is about missing family
+      if (errorMessage.contains('does not have an active family') ||
+          errorMessage.contains('no active family')) {
+        setState(() {
+          _error = 'Please create your family record first';
+          _isLoading = false;
+        });
+        // Redirect to create family after a short delay
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (mounted) {
+            context.goNamed(Routes.createFamily);
+          }
+        });
+      } else {
+        setState(() {
+          _error = 'Failed to load family members: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleAddMember(BuildContext context) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const AddFamilyMemberPage(),
+      ),
     );
+
+    // Refresh list if member was added successfully
+    if (result == true) {
+      _loadFamilyMembers();
+    }
   }
 
   void _handleMemberTap(BuildContext context, Map<String, dynamic> member) {
+    final dateOfBirth = member['dateOfBirth'] != null
+        ? DateTime.tryParse(member['dateOfBirth'].toString())
+        : null;
+    final age = dateOfBirth != null
+        ? DateTime.now().difference(dateOfBirth).inDays ~/ 365
+        : null;
+
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(member['name'] as String),
-        content: Text(
-          'Relationship: ${member['relationship']}\nAge: ${member['age']} years',
+        title: Text(member['fullName'] as String? ?? 'Unknown'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (member['gender'] != null)
+              Text('Gender: ${member['gender']}'),
+            if (dateOfBirth != null)
+              Text('Date of Birth: ${DateFormat('yyyy-MM-dd').format(dateOfBirth)}'),
+            if (age != null) Text('Age: $age years'),
+            if (member['placeOfBirth'] != null)
+              Text('Place of Birth: ${member['placeOfBirth']}'),
+            if (member['maritalStatus'] != null)
+              Text('Marital Status: ${member['maritalStatus']}'),
+            if (member['nationalIdNumber'] != null)
+              Text('National ID: ${member['nationalIdNumber']}'),
+            if (member['status'] != null) Text('Status: ${member['status']}'),
+          ],
         ),
         actions: [
           TextButton(
@@ -97,7 +195,7 @@ class FamilyProfilePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 12),
                     Text(
-                      ' Ree Jimale',
+                      _familyName ?? 'Your Family',
                       style: textTheme.titleLarge?.copyWith(
                         color: Colors.white,
                         fontWeight: FontWeight.bold,
@@ -105,7 +203,7 @@ class FamilyProfilePage extends StatelessWidget {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Head of Family: Ahmednor Mahad',
+                      'Head of Family: ${_headOfFamilyName ?? 'Not set'}',
                       style: textTheme.bodyMedium?.copyWith(
                         color: Colors.white.withOpacity(0.9),
                       ),
@@ -142,20 +240,110 @@ class FamilyProfilePage extends StatelessWidget {
 
           // Family Members List
           Expanded(
-            child: ListView.separated(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _familyMembers.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 12),
-              itemBuilder: (context, index) {
-                final member = _familyMembers[index];
-                return _FamilyMemberCard(
-                  name: member['name'] as String,
-                  relationship: member['relationship'] as String,
-                  age: member['age'] as int?,
-                  onTap: () => _handleMemberTap(context, member),
-                );
-              },
-            ),
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _error != null
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.error_outline,
+                              size: 48,
+                              color: colorScheme.error,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              _error!,
+                              style: textTheme.bodyMedium?.copyWith(
+                                color: colorScheme.error,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            if (_error!.contains('create your family'))
+                              ElevatedButton.icon(
+                                onPressed: () {
+                                  context.goNamed(Routes.createFamily);
+                                },
+                                icon: const Icon(Icons.add),
+                                label: const Text('Create Family'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: colorScheme.primary,
+                                  foregroundColor: colorScheme.onPrimary,
+                                ),
+                              )
+                            else
+                              ElevatedButton(
+                                onPressed: _loadFamilyMembers,
+                                child: const Text('Retry'),
+                              ),
+                          ],
+                        ),
+                      )
+                    : _familyMembers.isEmpty
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.people_outline,
+                                  size: 48,
+                                  color: colorScheme.onSurface.withOpacity(0.5),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  'No family members yet',
+                                  style: textTheme.bodyLarge?.copyWith(
+                                    color: colorScheme.onSurface.withOpacity(0.6),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Tap the button below to add your first family member',
+                                  style: textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurface.withOpacity(0.5),
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.symmetric(horizontal: 16),
+                            itemCount: _familyMembers.length,
+                            separatorBuilder: (context, index) =>
+                                const SizedBox(height: 12),
+                            itemBuilder: (context, index) {
+                              final member = _familyMembers[index];
+                              final dateOfBirth = member['dateOfBirth'] != null
+                                  ? DateTime.tryParse(
+                                      member['dateOfBirth'].toString())
+                                  : null;
+                              final age = dateOfBirth != null
+                                  ? DateTime.now()
+                                          .difference(dateOfBirth)
+                                          .inDays ~/
+                                      365
+                                  : null;
+
+                              // Determine relationship based on marital status
+                              String relationship = 'Member';
+                              if (member['maritalStatus'] == 'married') {
+                                relationship = 'Spouse';
+                              } else if (member['maritalStatus'] == 'divorced') {
+                                relationship = 'Divorced';
+                              }
+
+                              return _FamilyMemberCard(
+                                name: member['fullName'] as String? ??
+                                    '${member['firstName']} ${member['lastName']}',
+                                relationship: relationship,
+                                age: age,
+                                onTap: () => _handleMemberTap(context, member),
+                              );
+                            },
+                          ),
           ),
         ],
       ),

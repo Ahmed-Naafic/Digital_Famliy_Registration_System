@@ -44,13 +44,23 @@ class AuthProvider extends ChangeNotifier {
     final storedEmail = prefs.getString(_userEmailKey);
     final storedRole = prefs.getString(_roleKey);
 
+    // Only restore session if token exists and is not empty
     if (storedToken != null &&
+        storedToken.isNotEmpty &&
         storedId != null &&
+        storedId.isNotEmpty &&
         storedName != null &&
-        storedEmail != null) {
+        storedName.isNotEmpty &&
+        storedEmail != null &&
+        storedEmail.isNotEmpty) {
       _token = storedToken;
       _user = User(id: storedId, name: storedName, email: storedEmail);
       _role = storedRole ?? 'citizen';
+    } else {
+      // Clear any invalid data
+      _token = null;
+      _user = null;
+      _role = 'citizen';
     }
 
     _isInitialized = true;

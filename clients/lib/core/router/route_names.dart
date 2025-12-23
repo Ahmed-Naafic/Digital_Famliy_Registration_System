@@ -17,6 +17,7 @@ class Routes {
   static const divorceRegistration = 'divorce-registration';
   static const deathRegistration = 'death-registration';
   static const familyProfile = 'family-profile';
+  static const createFamily = 'create-family';
   static const applicationStatus = 'application-status';
   static const certificates = 'certificates';
 }

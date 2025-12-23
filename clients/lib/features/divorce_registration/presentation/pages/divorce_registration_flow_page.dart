@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/registration_layout.dart';
+import '../../../../core/widgets/family_guard.dart';
 import '../provider/divorce_form_provider.dart';
 import 'divorce_registration_step1_page.dart';
 import 'divorce_registration_step2_page.dart';
@@ -65,9 +66,10 @@ class _DivorceRegistrationFlowPageState
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => DivorceFormProvider(),
-      child: Consumer<DivorceFormProvider>(
+    return FamilyGuard(
+      child: ChangeNotifierProvider(
+        create: (_) => DivorceFormProvider(),
+        child: Consumer<DivorceFormProvider>(
         builder: (context, provider, child) {
           final currentStep = provider.currentStep;
           final canProceed = currentStep == 0
@@ -116,6 +118,7 @@ class _DivorceRegistrationFlowPageState
             ),
           );
         },
+      ),
       ),
     );
   }

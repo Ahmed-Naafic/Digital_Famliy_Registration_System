@@ -2,9 +2,41 @@ import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:provider/provider.dart';
+import '../../../../features/applications/data/application_service.dart';
+import '../../../../features/auth/auth_provider.dart';
 import '../provider/marriage_form_provider.dart';
 
-/// Marriage Registration Step 2: Wife Details & Marriage Info
+/// Family Member Model for selection
+class FamilyMember {
+  final String id;
+  final String fullName;
+  final String? gender;
+  final DateTime? dateOfBirth;
+
+  FamilyMember({
+    required this.id,
+    required this.fullName,
+    this.gender,
+    this.dateOfBirth,
+  });
+
+  factory FamilyMember.fromJson(Map<String, dynamic> json) {
+    return FamilyMember(
+      id: json['id'] as String,
+      fullName: json['fullName'] as String? ?? 
+                '${json['firstName']} ${json['lastName']}',
+      gender: json['gender'] as String?,
+      dateOfBirth: json['dateOfBirth'] != null
+          ? DateTime.tryParse(json['dateOfBirth'].toString())
+          : null,
+    );
+  }
+
+  @override
+  String toString() => fullName;
+}
+
+/// Marriage Registration Step 2: Select Wife from Family Members
 class MarriageRegistrationStep2Page extends StatefulWidget {
   const MarriageRegistrationStep2Page({super.key});
 
@@ -14,6 +46,48 @@ class MarriageRegistrationStep2Page extends StatefulWidget {
 
 class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep2Page> {
   final _formKey = GlobalKey<FormBuilderState>();
+  List<FamilyMember> _familyMembers = [];
+  bool _isLoadingMembers = true;
+  String? _errorLoadingMembers;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchFamilyMembers();
+  }
+
+  Future<void> _fetchFamilyMembers() async {
+    setState(() {
+      _isLoadingMembers = true;
+      _errorLoadingMembers = null;
+    });
+
+    final authProvider = context.read<AuthProvider>();
+    final applicationService = const ApplicationService();
+    final token = authProvider.token;
+
+    if (token == null || token.isEmpty) {
+      setState(() {
+        _errorLoadingMembers = 'Authentication token missing. Please log in.';
+        _isLoadingMembers = false;
+      });
+      return;
+    }
+
+    try {
+      final rawMembers = await applicationService.getFamilyMembers(token: token);
+      setState(() {
+        _familyMembers =
+            rawMembers.map((json) => FamilyMember.fromJson(json)).toList();
+        _isLoadingMembers = false;
+      });
+    } catch (e) {
+      setState(() {
+        _errorLoadingMembers = 'Failed to load family members: $e';
+        _isLoadingMembers = false;
+      });
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -26,16 +100,41 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Info Card
+          Card(
+            color: Colors.pink.withOpacity(0.1),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(color: Colors.pink.withOpacity(0.3)),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, color: Colors.pink.shade700),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Please select the wife from your existing family members. She must already be registered in your family.',
+                      style: textTheme.bodyMedium,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+
           // Section Header
           Text(
-            'Wife & Marriage Details',
+            'Wife Information',
             style: textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
             ),
           ),
           const SizedBox(height: 8),
           Text(
-            'Please provide wife\'s details and marriage information',
+            'Select wife from your family members',
             style: textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withOpacity(0.6),
             ),
@@ -50,126 +149,50 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
                 key: _formKey,
                 child: Column(
                   children: [
-                    FormBuilderTextField(
-              name: 'wifeName',
-              initialValue: provider.wifeName,
-              decoration: InputDecoration(
-                labelText: 'Wife\'s Full Name *',
-                hintText: 'Enter wife\'s full name',
-                prefixIcon: const Icon(Icons.person),
-              ),
-              validator: FormBuilderValidators.compose([
-                FormBuilderValidators.required(),
-                FormBuilderValidators.minLength(2),
-              ]),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateWifeName(value);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-
-            FormBuilderDateTimePicker(
-              name: 'wifeDateOfBirth',
-              initialValue: provider.wifeDateOfBirth,
-              decoration: InputDecoration(
-                labelText: 'Date of Birth (Optional)',
-                hintText: 'Select date of birth',
-                prefixIcon: const Icon(Icons.calendar_today),
-              ),
-              firstDate: DateTime(1900),
-              lastDate: DateTime.now(),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateWifeDateOfBirth(value);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-
-            FormBuilderTextField(
-              name: 'wifeNationalId',
-              initialValue: provider.wifeNationalId,
-              decoration: InputDecoration(
-                labelText: 'National ID (Optional)',
-                hintText: 'Enter national ID',
-                prefixIcon: const Icon(Icons.badge),
-              ),
-              onChanged: (value) {
-                provider.updateWifeNationalId(value ?? '');
-              },
-            ),
-            const SizedBox(height: 24),
-
-            FormBuilderDateTimePicker(
-              name: 'marriageDate',
-              initialValue: provider.marriageDate,
-              decoration: InputDecoration(
-                labelText: 'Marriage Date *',
-                hintText: 'Select marriage date',
-                prefixIcon: const Icon(Icons.calendar_today),
-              ),
-              validator: FormBuilderValidators.required(),
-              firstDate: DateTime(1900),
-              lastDate: DateTime.now(),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateMarriageDate(value);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-
-            FormBuilderTextField(
-              name: 'location',
-              initialValue: provider.location,
-              decoration: InputDecoration(
-                labelText: 'Marriage Location *',
-                hintText: 'Enter location',
-                prefixIcon: const Icon(Icons.location_on),
-              ),
-              validator: FormBuilderValidators.required(),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateLocation(value);
-                }
-              },
-            ),
-            const SizedBox(height: 24),
-
-            FormBuilderTextField(
-              name: 'witness1',
-              initialValue: provider.witness1,
-              decoration: InputDecoration(
-                labelText: 'Witness 1 Name *',
-                hintText: 'Enter first witness name',
-                prefixIcon: const Icon(Icons.person_outline),
-              ),
-              validator: FormBuilderValidators.required(),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateWitness1(value);
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-
-            FormBuilderTextField(
-              name: 'witness2',
-              initialValue: provider.witness2,
-              decoration: InputDecoration(
-                labelText: 'Witness 2 Name *',
-                hintText: 'Enter second witness name',
-                prefixIcon: const Icon(Icons.person_outline),
-              ),
-              validator: FormBuilderValidators.required(),
-              onChanged: (value) {
-                if (value != null) {
-                  provider.updateWitness2(value);
-                }
-              },
-                    ),
+                    if (_isLoadingMembers)
+                      const Center(child: CircularProgressIndicator())
+                    else if (_errorLoadingMembers != null)
+                      Text(
+                        _errorLoadingMembers!,
+                        style: textTheme.bodyMedium?.copyWith(color: Colors.red),
+                      )
+                    else if (_familyMembers.isEmpty)
+                      Text(
+                        'No family members found. Please add family members first before registering a marriage.',
+                        style: textTheme.bodyMedium?.copyWith(
+                          color: colorScheme.onSurface.withOpacity(0.6),
+                        ),
+                      )
+                    else
+                      FormBuilderDropdown<FamilyMember>(
+                        name: 'wife',
+                        initialValue: provider.wifeId != null
+                            ? _familyMembers.firstWhere(
+                                (m) => m.id == provider.wifeId,
+                                orElse: () => _familyMembers.first,
+                              )
+                            : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Wife *',
+                          hintText: 'Select wife',
+                          prefixIcon: Icon(Icons.person),
+                        ),
+                        validator: FormBuilderValidators.required(),
+                        items: _familyMembers
+                            .where((m) => m.gender == 'female' || m.gender == null)
+                            .map(
+                              (member) => DropdownMenuItem(
+                                value: member,
+                                child: Text(member.fullName),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) {
+                            provider.updateWifeId(value.id, value.fullName);
+                          }
+                        },
+                      ),
                   ],
                 ),
               ),
@@ -180,4 +203,3 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
     );
   }
 }
-

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/widgets/registration_layout.dart';
+import '../../../../core/widgets/family_guard.dart';
 import '../provider/birth_form_provider.dart';
 import 'birth_registration_step1_page.dart';
 import 'birth_registration_step2_page.dart';
@@ -65,9 +66,10 @@ class _BirthRegistrationFlowPageState extends State<BirthRegistrationFlowPage> {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => BirthFormProvider(),
-      child: Consumer<BirthFormProvider>(
+    return FamilyGuard(
+      child: ChangeNotifierProvider(
+        create: (_) => BirthFormProvider(),
+        child: Consumer<BirthFormProvider>(
         builder: (context, provider, child) {
           final currentStep = provider.currentStep;
           final canProceed = currentStep == 0
@@ -116,6 +118,7 @@ class _BirthRegistrationFlowPageState extends State<BirthRegistrationFlowPage> {
             ),
           );
         },
+      ),
       ),
     );
   }

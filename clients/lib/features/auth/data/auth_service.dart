@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../../../core/constants/api_constants.dart';
@@ -80,8 +81,15 @@ class AuthService {
 
         final userJson =
             (data['user'] as Map<String, dynamic>? ?? <String, dynamic>{});
-        final role =
-            data['role'] as String? ?? userJson['role'] as String? ?? 'citizen';
+        
+        // Get role from top-level data first, then from user object, default to 'citizen'
+        final role = data['role'] as String? ?? 
+                     userJson['role'] as String? ?? 
+                     'citizen';
+        
+        debugPrint('🔐 Auth Response - Role: $role');
+        debugPrint('🔐 Auth Response - User JSON: $userJson');
+        debugPrint('🔐 Auth Response - Data: $data');
 
         final user = User.fromJson(userJson);
 

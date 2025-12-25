@@ -50,6 +50,7 @@ export const registerUser = async ({ fullName, email, phoneNumber, password }) =
   return {
     token,
     user: buildUserResponse(user),
+    role: user.role, // Explicitly include role at top level for frontend
   };
 };
 
@@ -90,6 +91,7 @@ export const loginUser = async ({ email, password }) => {
   return {
     token,
     user: buildUserResponse(user),
+    role: user.role, // Explicitly include role at top level for frontend
   };
 };
 

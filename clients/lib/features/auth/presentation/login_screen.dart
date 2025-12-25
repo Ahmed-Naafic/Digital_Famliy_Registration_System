@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
@@ -48,24 +49,39 @@ class _LoginScreenState extends State<LoginScreen> {
 
         // Navigate based on role
         final role = authProvider.role;
+        debugPrint('🔐 Login - User role: $role');
+        debugPrint('🔐 Login - User: ${authProvider.user?.name}');
+        debugPrint('🔐 Login - Token exists: ${authProvider.token != null}');
+        
         if (role == 'admin') {
+          debugPrint('🔐 Login - Redirecting to admin dashboard');
           context.goNamed(Routes.admin);
         } else {
+          debugPrint('🔐 Login - Redirecting to citizen dashboard');
           // Check if user has a family (citizens only)
-          final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
           final token = authProvider.token;
           
           if (token != null && token.isNotEmpty) {
-            await familyProvider.checkFamily(token: token);
-            
-            if (!mounted) return;
-            
-            // Navigate based on family status
-            if (familyProvider.hasFamily) {
-              context.goNamed(Routes.dashboard);
-            } else {
-              // Redirect to create family page
-              context.goNamed(Routes.createFamily);
+            try {
+              // Safely access FamilyProvider
+              final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+              await familyProvider.checkFamily(token: token);
+              
+              if (!mounted) return;
+              
+              // Navigate based on family status
+              if (familyProvider.hasFamily) {
+                context.goNamed(Routes.dashboard);
+              } else {
+                // Redirect to create family page
+                context.goNamed(Routes.createFamily);
+              }
+            } catch (e) {
+              // If FamilyProvider is not available, just go to dashboard
+              debugPrint('⚠️ FamilyProvider not available: $e');
+              if (mounted) {
+                context.goNamed(Routes.dashboard);
+              }
             }
           } else {
             context.goNamed(Routes.dashboard);

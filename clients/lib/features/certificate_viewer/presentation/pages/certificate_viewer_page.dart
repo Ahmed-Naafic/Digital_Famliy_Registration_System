@@ -2,22 +2,95 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:go_router/go_router.dart';
-import '../../../../core/services/application_service.dart';
+import '../../../../features/applications/data/application_service.dart'
+    as api_service;
 import '../../../../features/auth/auth_provider.dart';
 import '../../../../core/router/route_names.dart';
-import '../../data/certificate_model.dart';
+import '../../data/certificate_data_model.dart';
+import 'certificate_detail_page.dart';
 
 /// Certificate Viewer Page
 /// Displays list of certificates with view/download options
 /// Theme-aware with Material 3 design
-class CertificateViewerPage extends StatelessWidget {
+class CertificateViewerPage extends StatefulWidget {
   const CertificateViewerPage({super.key});
+
+  @override
+  State<CertificateViewerPage> createState() => _CertificateViewerPageState();
+}
+
+class _CertificateViewerPageState extends State<CertificateViewerPage> {
+  bool _isLoading = true;
+  List<CertificateData> _certificates = [];
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCertificates();
+  }
+
+  Future<void> _loadCertificates() async {
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final applicationService = const api_service.ApplicationService();
+      final token = authProvider.token;
+
+      if (token == null || token.isEmpty) {
+        setState(() {
+          _error = 'Authentication token missing';
+          _isLoading = false;
+        });
+        return;
+      }
+
+      final certificatesData = await applicationService.getMyCertificates(
+        token: token,
+      );
+
+      if (mounted) {
+        setState(() {
+          _certificates = certificatesData
+              .map(
+                (data) => CertificateData.fromJson({
+                  'id': data['id'] as String? ?? '',
+                  'applicationId': data['applicationId'] as String? ?? '',
+                  'certificateNumber':
+                      data['certificateNumber'] as String? ?? '',
+                  'type': data['type'] as String? ?? 'birth',
+                  'issueDate': data['issueDate'] != null
+                      ? DateTime.parse(data['issueDate'] as String)
+                      : DateTime.now(),
+                  'issuedBy': data['issuedBy'] as String? ?? 'System',
+                  'details': data['details'] as Map<String, dynamic>? ?? {},
+                  'qrCodeUrl': data['qrCodeUrl'] as String?,
+                  'digitalSignatureHash':
+                      data['digitalSignatureHash'] as String?,
+                }),
+              )
+              .toList();
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = 'Failed to load certificates: $e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final authProvider = Provider.of<AuthProvider>(context);
-    final applicationService = Provider.of<ApplicationService>(context);
     final user = authProvider.user;
 
     if (user == null) {
@@ -35,8 +108,6 @@ class CertificateViewerPage extends StatelessWidget {
       );
     }
 
-    final certificates = applicationService.getCertificatesForCitizen(user.id);
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('My Certificates'),
@@ -44,8 +115,37 @@ class CertificateViewerPage extends StatelessWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.goNamed(Routes.dashboard),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadCertificates,
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
-      body: certificates.isEmpty
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.error_outline, size: 48, color: colorScheme.error),
+                  const SizedBox(height: 16),
+                  Text(
+                    _error!,
+                    style: TextStyle(color: colorScheme.error),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: _loadCertificates,
+                    child: const Text('Retry'),
+                  ),
+                ],
+              ),
+            )
+          : _certificates.isEmpty
           ? Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -59,15 +159,15 @@ class CertificateViewerPage extends StatelessWidget {
                   Text(
                     'No certificates found',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.5),
-                        ),
+                      color: colorScheme.onSurface.withOpacity(0.5),
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     'Approved certificates will appear here',
                     style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.5),
-                        ),
+                      color: colorScheme.onSurface.withOpacity(0.5),
+                    ),
                   ),
                 ],
               ),
@@ -78,12 +178,13 @@ class CertificateViewerPage extends StatelessWidget {
                 crossAxisCount: 2,
                 crossAxisSpacing: 16,
                 mainAxisSpacing: 16,
-                childAspectRatio: 0.9,
+                childAspectRatio: 0.6,
               ),
-              itemCount: certificates.length,
+              itemCount: _certificates.length,
               itemBuilder: (context, index) {
-                final cert = certificates[index];
+                final cert = _certificates[index];
                 final dateFormat = DateFormat('yyyy-MM-dd');
+                final certType = cert.type;
 
                 return Card(
                   elevation: 0,
@@ -101,21 +202,20 @@ class CertificateViewerPage extends StatelessWidget {
                           Container(
                             padding: const EdgeInsets.all(16),
                             decoration: BoxDecoration(
-                              color: colorScheme.primary.withOpacity(0.1),
+                              color: certType.primaryColor.withOpacity(0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: Icon(
-                              cert.icon,
-                              color: colorScheme.primary,
+                              certType.icon,
+                              color: certType.primaryColor,
                               size: 40,
                             ),
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            cert.displayName,
-                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                  fontWeight: FontWeight.w600,
-                                ),
+                            certType.displayName,
+                            style: Theme.of(context).textTheme.bodyLarge
+                                ?.copyWith(fontWeight: FontWeight.w600),
                             textAlign: TextAlign.center,
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -123,10 +223,23 @@ class CertificateViewerPage extends StatelessWidget {
                           const SizedBox(height: 8),
                           Text(
                             'Issued: ${dateFormat.format(cert.issueDate)}',
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
                                   color: colorScheme.onSurface.withOpacity(0.6),
                                 ),
                             textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            cert.certificateNumber,
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: certType.primaryColor,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                           const SizedBox(height: 12),
                           SizedBox(
@@ -136,7 +249,11 @@ class CertificateViewerPage extends StatelessWidget {
                               icon: const Icon(Icons.visibility, size: 18),
                               label: const Text('View'),
                               style: ElevatedButton.styleFrom(
-                                padding: const EdgeInsets.symmetric(vertical: 8),
+                                backgroundColor: certType.primaryColor,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
@@ -153,144 +270,75 @@ class CertificateViewerPage extends StatelessWidget {
     );
   }
 
-  void _viewCertificate(BuildContext context, Certificate cert) {
+  void _viewCertificate(BuildContext context, CertificateData cert) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => CertificatePreviewPage(certificate: cert),
-      ),
-    );
-  }
-}
-
-/// Certificate Preview Page
-/// Placeholder page for viewing certificate details
-class CertificatePreviewPage extends StatelessWidget {
-  final Certificate certificate;
-
-  const CertificatePreviewPage({
-    super.key,
-    required this.certificate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final dateFormat = DateFormat('yyyy-MM-dd');
-
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Certificate Preview'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Card(
-              elevation: 0,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primary.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        certificate.icon,
-                        color: colorScheme.primary,
-                        size: 64,
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    Text(
-                      certificate.displayName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInfoRow(context, 'Certificate Number', certificate.certificateNumber),
-                    _buildInfoRow(context, 'Issue Date', dateFormat.format(certificate.issueDate)),
-                    const SizedBox(height: 32),
-                    Text(
-                      'This is a preview. The actual certificate document will be displayed here.',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: colorScheme.onSurface.withOpacity(0.6),
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 24),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          // TODO: Implement PDF download
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Download feature coming soon'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.download),
-                        label: const Text('Download Certificate'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+        builder: (context) => CertificateDetailPage(certificate: cert),
       ),
     );
   }
 
-  Widget _buildInfoRow(BuildContext context, String label, String value) {
-    final colorScheme = Theme.of(context).colorScheme;
+  Future<void> _downloadCertificate(
+    BuildContext context,
+    CertificateData cert,
+  ) async {
+    try {
+      final authProvider = Provider.of<AuthProvider>(context, listen: false);
+      final applicationService = const api_service.ApplicationService();
+      final token = authProvider.token;
 
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: colorScheme.onSurface.withOpacity(0.6),
-                  ),
+      if (token == null || token.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Authentication token missing')),
+        );
+        return;
+      }
+
+      // Show loading
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(child: CircularProgressIndicator()),
+      );
+
+      final downloadUrl = await applicationService.getCertificateDownloadUrl(
+        certificateId: cert.id,
+        token: token,
+      );
+
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog
+
+        // Show download URL to user
+        // In production, you would use a package like `url_launcher` or download the file directly
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Certificate download URL: $downloadUrl'),
+            duration: const Duration(seconds: 5),
+            action: SnackBarAction(
+              label: 'Copy',
+              onPressed: () {
+                // Copy to clipboard functionality can be added here
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('URL copied to clipboard')),
+                );
+              },
             ),
+            backgroundColor: Colors.green,
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
-            ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        Navigator.pop(context); // Close loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error downloading certificate: $e'),
+            backgroundColor: Colors.red,
           ),
-        ],
-      ),
-    );
+        );
+      }
+    }
   }
 }

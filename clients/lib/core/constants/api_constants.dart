@@ -15,7 +15,7 @@ class ApiConstants {
     const port = 5000;
 
     if (Platform.isAndroid) {
-      return 'http://192.168.1.142:$port';
+      return 'http://10.36.241.181:$port';
     }
 
     return 'http://localhost:$port';

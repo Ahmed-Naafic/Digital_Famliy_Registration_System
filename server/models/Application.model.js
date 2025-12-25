@@ -63,6 +63,9 @@ const applicationSchema = new Schema(
       type: Schema.Types.ObjectId,
       ref: 'User',
     },
+    reviewedAt: {
+      type: Date,
+    },
     certificateId: {
       type: Schema.Types.ObjectId,
       ref: 'Certificate',

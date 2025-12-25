@@ -10,6 +10,11 @@ class Routes {
   static const dashboard = 'dashboard';
   static const settings = 'settings';
   static const admin = 'admin';
+  static const adminApplications = 'admin-applications';
+  static const adminCitizens = 'admin-citizens';
+  static const adminFamilies = 'admin-families';
+  static const adminCertificates = 'admin-certificates';
+  static const adminServices = 'admin-services';
   
   // Citizen service routes
   static const birthRegistration = 'birth-registration';

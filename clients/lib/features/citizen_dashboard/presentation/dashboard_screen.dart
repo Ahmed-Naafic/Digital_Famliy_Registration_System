@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -8,6 +9,8 @@ import '../../../../core/router/route_names.dart';
 import '../../../../core/services/application_service.dart';
 import '../../../../features/application_status/data/application_model.dart';
 import '../../../../features/applications/providers/application_provider.dart';
+import '../../../../features/applications/data/application_service.dart'
+    as api_service;
 import '../../auth/auth_provider.dart';
 import '../../family/providers/family_provider.dart';
 import 'widgets/sidebar_widget.dart';
@@ -28,6 +31,8 @@ class DashboardScreen extends StatefulWidget {
 class _DashboardScreenState extends State<DashboardScreen> {
   int _currentIndex = 0;
   bool _showCertificates = false;
+  List<String> _enabledServices = []; // Will be populated from backend
+  List<String> _disabledServices = []; // Track disabled services
 
   final List<Map<String, dynamic>> _certificates = [
     {
@@ -48,10 +53,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    // Fetch applications when dashboard loads
+    // Fetch applications and enabled services when dashboard loads
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _fetchApplications();
+      _fetchEnabledServices();
     });
+  }
+
+  /// Fetch enabled services from backend
+  void _fetchEnabledServices() async {
+    final authProvider = context.read<AuthProvider>();
+    final applicationService = const api_service.ApplicationService();
+    final token = authProvider.token;
+
+    if (token != null && token.isNotEmpty) {
+      try {
+        final enabled = await applicationService.getEnabledServices(
+          token: token,
+        );
+        if (mounted) {
+          final allServices = ['birth', 'marriage', 'divorce', 'death'];
+          setState(() {
+            _enabledServices = enabled;
+            _disabledServices = allServices
+                .where((s) => !enabled.contains(s))
+                .toList();
+          });
+        }
+      } catch (e) {
+        debugPrint('Error fetching enabled services: $e');
+        // On error, show all services as enabled (better UX than showing nothing)
+        if (mounted) {
+          setState(() {
+            _enabledServices = ['birth', 'marriage', 'divorce', 'death'];
+            _disabledServices = [];
+          });
+        }
+      }
+    }
   }
 
   /// Fetch applications from backend
@@ -81,191 +120,210 @@ class _DashboardScreenState extends State<DashboardScreen> {
               : [kBackgroundColor, kBackgroundColor],
         ),
       ),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.all(kDefaultPadding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Welcome Card with gradient
-            Container(
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [kPrimaryColor, kSecondaryColor],
+      child: RefreshIndicator(
+        onRefresh: () async {
+          _fetchApplications();
+          _fetchEnabledServices();
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(kDefaultPadding),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Welcome Card with gradient
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [kPrimaryColor, kSecondaryColor],
+                  ),
+                ),
+                padding: const EdgeInsets.all(kDefaultPadding * 1.5),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.2),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.person,
+                        color: Colors.white,
+                        size: 32,
+                      ),
+                    ),
+                    const SizedBox(width: kDefaultPadding),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Hi, ${authProvider.user?.name ?? 'User'}!',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: kHeadingFontSize,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Manage your family records and certificates',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.8),
+                              fontSize: kBodyFontSize,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              padding: const EdgeInsets.all(kDefaultPadding * 1.5),
-              child: Row(
+              const SizedBox(height: kDefaultPadding * 1.5),
+
+              // Quick Actions Section
+              Text(
+                'Quick Actions',
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontSize: kSubheadingFontSize,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: kDefaultPadding),
+              GridView.count(
+                crossAxisCount: 2,
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                crossAxisSpacing: kDefaultPadding,
+                mainAxisSpacing: kDefaultPadding,
+                childAspectRatio: 1.0,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.2),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.person,
-                      color: Colors.white,
-                      size: 32,
-                    ),
+                  QuickActionCard(
+                    icon: Icons.child_care,
+                    title: 'Birth Registration',
+                    backgroundColor: kPrimaryColor,
+                    onTap: _enabledServices.contains('birth')
+                        ? () => context.goNamed(Routes.birthRegistration)
+                        : null,
+                    isDisabled: _disabledServices.contains('birth'),
+                    disabledMessage: 'Disabled by Admin',
                   ),
-                  const SizedBox(width: kDefaultPadding),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Hi, ${authProvider.user?.name ?? 'User'}!',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: kHeadingFontSize,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Manage your family records and certificates',
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: kBodyFontSize,
-                          ),
-                        ),
-                      ],
-                    ),
+                  QuickActionCard(
+                    icon: Icons.favorite,
+                    title: 'Marriage Registration',
+                    backgroundColor: Colors.pink,
+                    onTap: _enabledServices.contains('marriage')
+                        ? () => context.goNamed(Routes.marriageRegistration)
+                        : null,
+                    isDisabled: _disabledServices.contains('marriage'),
+                    disabledMessage: 'Disabled by Admin',
+                  ),
+                  QuickActionCard(
+                    icon: Icons.heart_broken,
+                    title: 'Divorce Registration',
+                    backgroundColor: Colors.purple,
+                    onTap: _enabledServices.contains('divorce')
+                        ? () => context.goNamed(Routes.divorceRegistration)
+                        : null,
+                    isDisabled: _disabledServices.contains('divorce'),
+                    disabledMessage: 'Disabled by Admin',
+                  ),
+                  QuickActionCard(
+                    icon: Icons.celebration,
+                    title: 'Death Registration',
+                    backgroundColor: Colors.grey[700]!,
+                    onTap: _enabledServices.contains('death')
+                        ? () => context.goNamed(Routes.deathRegistration)
+                        : null,
+                    isDisabled: _disabledServices.contains('death'),
+                    disabledMessage: 'Disabled by Admin',
+                  ),
+                  QuickActionCard(
+                    icon: Icons.description,
+                    title: 'View Certificates',
+                    backgroundColor: kAccentColor,
+                    onTap: () => context.goNamed(Routes.certificates),
+                  ),
+                  QuickActionCard(
+                    icon: Icons.people,
+                    title: 'Family Profile',
+                    backgroundColor: Colors.teal,
+                    onTap: () => context.goNamed(Routes.familyProfile),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: kDefaultPadding * 1.5),
+              const SizedBox(height: kDefaultPadding * 2),
 
-            // Quick Actions Section
-            Text(
-              'Quick Actions',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontSize: kSubheadingFontSize,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const SizedBox(height: kDefaultPadding),
-            GridView.count(
-              crossAxisCount: 2,
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisSpacing: kDefaultPadding,
-              mainAxisSpacing: kDefaultPadding,
-              childAspectRatio: 1.1,
-              children: [
-                QuickActionCard(
-                  icon: Icons.child_care,
-                  title: 'Birth Registration',
-                  backgroundColor: kPrimaryColor,
-                  onTap: () => context.goNamed(Routes.birthRegistration),
-                ),
-                QuickActionCard(
-                  icon: Icons.favorite,
-                  title: 'Marriage Registration',
-                  backgroundColor: Colors.pink,
-                  onTap: () => context.goNamed(Routes.marriageRegistration),
-                ),
-                QuickActionCard(
-                  icon: Icons.heart_broken,
-                  title: 'Divorce Registration',
-                  backgroundColor: Colors.purple,
-                  onTap: () => context.goNamed(Routes.divorceRegistration),
-                ),
-                QuickActionCard(
-                  icon: Icons.celebration,
-                  title: 'Death Registration',
-                  backgroundColor: Colors.grey[700]!,
-                  onTap: () => context.goNamed(Routes.deathRegistration),
-                ),
-                QuickActionCard(
-                  icon: Icons.description,
-                  title: 'View Certificates',
-                  backgroundColor: kAccentColor,
-                  onTap: () => context.goNamed(Routes.certificates),
-                ),
-                QuickActionCard(
-                  icon: Icons.people,
-                  title: 'Family Profile',
-                  backgroundColor: Colors.teal,
-                  onTap: () => context.goNamed(Routes.familyProfile),
-                ),
-              ],
-            ),
-            const SizedBox(height: kDefaultPadding * 2),
-
-            // Recent Applications
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Text(
-                  'Recent Applications',
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: kSubheadingFontSize,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => context.goNamed(Routes.applicationStatus),
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: kDefaultPadding),
-            Consumer<ApplicationProvider>(
-              builder: (context, applicationProvider, child) {
-                // Show loading state if fetching
-                if (applicationProvider.isLoading) {
-                  return Card(
-                    color: isDark ? kDarkCardColor : Colors.white,
-                    child: const Padding(
-                      padding: EdgeInsets.all(kDefaultPadding * 2),
-                      child: Center(
-                        child: CircularProgressIndicator(),
-                      ),
+              // Recent Applications
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Recent Applications',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: kSubheadingFontSize,
+                      fontWeight: FontWeight.w600,
                     ),
-                  );
-                }
+                  ),
+                  TextButton(
+                    onPressed: () => context.goNamed(Routes.applicationStatus),
+                    child: const Text('View All'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: kDefaultPadding),
+              Consumer<ApplicationProvider>(
+                builder: (context, applicationProvider, child) {
+                  // Show loading state if fetching
+                  if (applicationProvider.isLoading) {
+                    return Card(
+                      color: isDark ? kDarkCardColor : Colors.white,
+                      child: const Padding(
+                        padding: EdgeInsets.all(kDefaultPadding * 2),
+                        child: Center(child: CircularProgressIndicator()),
+                      ),
+                    );
+                  }
 
-                // Get recent applications from provider
-                final recentApps = applicationProvider.recentApplications;
+                  // Get recent applications from provider
+                  final recentApps = applicationProvider.recentApplications;
 
-                if (recentApps.isEmpty) {
-                  return Card(
-                    color: isDark ? kDarkCardColor : Colors.white,
-                    child: Padding(
-                      padding: const EdgeInsets.all(kDefaultPadding * 2),
-                      child: Center(
-                        child: Text(
-                          'No recent applications',
-                          style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
+                  if (recentApps.isEmpty) {
+                    return Card(
+                      color: isDark ? kDarkCardColor : Colors.white,
+                      child: Padding(
+                        padding: const EdgeInsets.all(kDefaultPadding * 2),
+                        child: Center(
+                          child: Text(
+                            'No recent applications',
+                            style: TextStyle(
+                              color: isDark
+                                  ? Colors.grey[400]
+                                  : Colors.grey[600],
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  );
-                }
+                    );
+                  }
 
-                return Column(
-                  children: recentApps
-                      .map(
-                        (app) => _buildRecentApplicationCard(
-                          context,
-                          app,
-                          isDark,
-                        ),
-                      )
-                      .toList(),
-                );
-              },
-            ),
-          ],
+                  return Column(
+                    children: recentApps
+                        .map(
+                          (app) =>
+                              _buildRecentApplicationCard(context, app, isDark),
+                        )
+                        .toList(),
+                  );
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -332,9 +390,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       );
     }
 
-    // Services data with descriptions
-    final services = [
+    // Services data with descriptions - filter by enabled services
+    final allServices = [
       {
+        'type': 'birth',
         'icon': Icons.child_care,
         'title': 'Birth Registration',
         'description': 'Register a new birth and obtain birth certificate',
@@ -342,6 +401,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'onTap': () => context.goNamed(Routes.birthRegistration),
       },
       {
+        'type': 'marriage',
         'icon': Icons.favorite,
         'title': 'Marriage Registration',
         'description': 'Register your marriage and get marriage certificate',
@@ -349,6 +409,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'onTap': () => context.goNamed(Routes.marriageRegistration),
       },
       {
+        'type': 'divorce',
         'icon': Icons.heart_broken,
         'title': 'Divorce Registration',
         'description': 'Register divorce and obtain divorce certificate',
@@ -356,12 +417,25 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'onTap': () => context.goNamed(Routes.divorceRegistration),
       },
       {
+        'type': 'death',
         'icon': Icons.celebration,
         'title': 'Death Registration',
         'description': 'Register a death and obtain death certificate',
         'color': Colors.grey[700]!,
         'onTap': () => context.goNamed(Routes.deathRegistration),
       },
+    ];
+
+    // Show all services (enabled and disabled), then add non-service items
+    // Mark disabled services in the service data
+    final servicesWithStatus = allServices.map((service) {
+      final isEnabled = _enabledServices.contains(service['type']);
+      return {...service, 'isEnabled': isEnabled};
+    }).toList();
+
+    // Add non-service items (certificates, application status, family profile)
+    final services = [
+      ...servicesWithStatus,
       {
         'icon': Icons.description,
         'title': 'View Certificates',
@@ -451,15 +525,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ),
 
                 // Services list items
-                ...services.map(
-                  (service) => ServiceListItem(
+                ...services.map((service) {
+                  final isEnabled = service['isEnabled'] as bool? ?? true;
+                  final onTap = service['onTap'] as VoidCallback?;
+
+                  return ServiceListItem(
                     icon: service['icon'] as IconData,
                     title: service['title'] as String,
-                    description: service['description'] as String,
-                    iconColor: service['color'] as Color,
-                    onTap: service['onTap'] as VoidCallback,
-                  ),
-                ),
+                    description: isEnabled
+                        ? (service['description'] as String)
+                        : 'This service has been disabled by the administrator.',
+                    iconColor: isEnabled
+                        ? (service['color'] as Color)
+                        : Colors.grey,
+                    onTap: isEnabled ? onTap : null,
+                    isDisabled: !isEnabled,
+                  );
+                }),
               ],
             ),
           ),
@@ -603,7 +685,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 onPressed: () {
                   authProvider.logout();
                   // Clear family state on logout
-                  final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+                  final familyProvider = Provider.of<FamilyProvider>(
+                    context,
+                    listen: false,
+                  );
                   familyProvider.reset();
                   context.goNamed(Routes.login);
                   _showSnackBar(
@@ -780,9 +865,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Card(
       color: isDark ? kDarkCardColor : Colors.white,
       margin: const EdgeInsets.only(bottom: kDefaultPadding * 0.75),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: ListTile(
         leading: Container(
           padding: const EdgeInsets.all(8),
@@ -805,9 +888,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         subtitle: Text(
           'Submitted: ${dateFormat.format(app.submittedAt)}',
-          style: TextStyle(
-            color: isDark ? Colors.grey[400] : Colors.grey[600],
-          ),
+          style: TextStyle(color: isDark ? Colors.grey[400] : Colors.grey[600]),
         ),
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),

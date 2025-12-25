@@ -55,7 +55,10 @@ class AuthProvider extends ChangeNotifier {
         storedEmail.isNotEmpty) {
       _token = storedToken;
       _user = User(id: storedId, name: storedName, email: storedEmail);
-      _role = storedRole ?? 'citizen';
+      _role = (storedRole ?? 'citizen').trim().toLowerCase(); // Normalize role
+      
+      debugPrint('🔐 AuthProvider - Initialized from storage');
+      debugPrint('🔐 AuthProvider - Role: $_role');
     } else {
       // Clear any invalid data
       _token = null;
@@ -97,7 +100,11 @@ class AuthProvider extends ChangeNotifier {
 
       _token = result.token;
       _user = result.user;
-      _role = result.role;
+      _role = result.role.trim().toLowerCase(); // Normalize role (trim and lowercase)
+
+      debugPrint('🔐 AuthProvider - Login successful');
+      debugPrint('🔐 AuthProvider - Role: $_role');
+      debugPrint('🔐 AuthProvider - User: ${_user?.name}');
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_tokenKey, result.token);

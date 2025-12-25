@@ -429,4 +429,681 @@ class ApplicationService {
       throw ApplicationException(message);
     }
   }
+
+  /// Get family members by family ID (admin only)
+  ///
+  /// [familyId] - Family ID
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns list of family members
+  Future<List<Map<String, dynamic>>> getFamilyMembersByFamilyId({
+    required String familyId,
+    required String token,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}/api/admin/families/$familyId/members');
+
+    debugPrint('Fetching family members for family: $familyId');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Family Members API Response Status: ${response.statusCode}');
+    debugPrint('Family Members API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'];
+
+      if (data is List) {
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch family members';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get all families (admin only)
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// [page] - Page number (default: 1)
+  /// [limit] - Items per page (default: 50)
+  /// [search] - Search query (optional)
+  /// Returns families list with pagination info
+  Future<Map<String, dynamic>> getAllFamilies({
+    required String token,
+    int page = 1,
+    int limit = 50,
+    String search = '',
+  }) async {
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+    };
+    if (search.isNotEmpty) {
+      queryParams['search'] = search;
+    }
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/families')
+        .replace(queryParameters: queryParams);
+
+    debugPrint('Fetching families from: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Families API Response Status: ${response.statusCode}');
+    debugPrint('Families API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch families';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get all citizens (admin only)
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// [page] - Page number (default: 1)
+  /// [limit] - Items per page (default: 50)
+  /// [search] - Search query (optional)
+  /// Returns citizens list with pagination info
+  Future<Map<String, dynamic>> getAllCitizens({
+    required String token,
+    int page = 1,
+    int limit = 50,
+    String search = '',
+  }) async {
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+    };
+    if (search.isNotEmpty) {
+      queryParams['search'] = search;
+    }
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/citizens')
+        .replace(queryParameters: queryParams);
+
+    debugPrint('Fetching citizens from: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Citizens API Response Status: ${response.statusCode}');
+    debugPrint('Citizens API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch citizens';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Update service status (admin only)
+  ///
+  /// [serviceType] - Service type (birth, marriage, divorce, death)
+  /// [enabled] - Whether service is enabled
+  /// [token] - JWT authentication token (must be admin)
+  Future<void> updateServiceStatus({
+    required String serviceType,
+    required bool enabled,
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/services/$serviceType');
+
+    debugPrint('Updating service status: $serviceType = $enabled');
+
+    final response = await http.put(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({ 'enabled': enabled }),
+    );
+
+    debugPrint('Update Service Status API Response Status: ${response.statusCode}');
+    debugPrint('Update Service Status API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return;
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to update service status';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get certificates for the logged-in citizen
+  ///
+  /// [token] - JWT authentication token
+  /// Returns list of certificates
+  Future<List<Map<String, dynamic>>> getMyCertificates({
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/certificates/my');
+
+    debugPrint('Fetching certificates: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Certificates API Response Status: ${response.statusCode}');
+    debugPrint('Certificates API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'];
+
+      if (data is List) {
+        return data.cast<Map<String, dynamic>>();
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch certificates';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get certificate download URL
+  ///
+  /// [certificateId] - Certificate ID
+  /// [token] - JWT authentication token
+  /// Returns download URL
+  Future<String> getCertificateDownloadUrl({
+    required String certificateId,
+    required String token,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}/api/certificates/$certificateId/download');
+
+    debugPrint('Fetching certificate download URL: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Certificate Download API Response Status: ${response.statusCode}');
+    debugPrint('Certificate Download API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null && data['downloadUrl'] != null) {
+        return data['downloadUrl'] as String;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to get certificate download URL';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get all certificates (admin only)
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// [page] - Page number (default: 1)
+  /// [limit] - Items per page (default: 50)
+  /// [search] - Search query (optional)
+  /// Returns certificates list with pagination info
+  Future<Map<String, dynamic>> getAllCertificates({
+    required String token,
+    int page = 1,
+    int limit = 50,
+    String search = '',
+  }) async {
+    final queryParams = <String, String>{
+      'page': page.toString(),
+      'limit': limit.toString(),
+    };
+    if (search.isNotEmpty) {
+      queryParams['search'] = search;
+    }
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/certificates')
+        .replace(queryParameters: queryParams);
+
+    debugPrint('Fetching certificates from: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Certificates API Response Status: ${response.statusCode}');
+    debugPrint('Certificates API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch certificates';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get enabled services (for citizens)
+  ///
+  /// [token] - JWT authentication token
+  /// Returns list of enabled service types
+  Future<List<String>> getEnabledServices({
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/services/enabled');
+
+    debugPrint('Fetching enabled services: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Enabled Services API Response Status: ${response.statusCode}');
+    debugPrint('Enabled Services API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'];
+
+      if (data is List) {
+        final enabledList = data.cast<String>();
+        debugPrint('Enabled services from API: $enabledList');
+        return enabledList;
+      } else {
+        debugPrint('API returned non-list data, returning empty list');
+        return [];
+      }
+    } else {
+      debugPrint('API error, returning empty list');
+      // Return empty list on error - better to show nothing than show disabled services
+      return [];
+    }
+  }
+
+  /// Get service-specific statistics (admin only)
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns statistics by service type
+  Future<Map<String, dynamic>> getServiceStatistics({
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/services/statistics');
+
+    debugPrint('Fetching service statistics from: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Service Statistics API Response Status: ${response.statusCode}');
+    debugPrint('Service Statistics API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch service statistics';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get admin dashboard statistics
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns statistics object with counts
+  Future<Map<String, dynamic>> getAdminStatistics({
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/statistics');
+
+    debugPrint('Fetching admin statistics from: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Admin statistics API Response Status: ${response.statusCode}');
+    debugPrint('Admin statistics API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch admin statistics';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get applications by status (admin only)
+  ///
+  /// [status] - Application status: 'pending', 'approved', or 'rejected'
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns list of applications with the specified status
+  Future<List<Map<String, dynamic>>> getApplicationsByStatus({
+    required String status,
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/applications?status=$status');
+
+    debugPrint('Fetching applications by status: $status from $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Applications by status API Response Status: ${response.statusCode}');
+    debugPrint('Applications by status API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final dynamic decodedBody = jsonDecode(response.body);
+
+      if (decodedBody is Map<String, dynamic>) {
+        final body = decodedBody;
+        final data = body['data'];
+
+        if (data == null) {
+          debugPrint('API Response: Data field is null, returning empty list');
+          return [];
+        }
+
+        if (data is List) {
+          debugPrint('API Response: Data field is a list of ${data.length} applications');
+          return data.cast<Map<String, dynamic>>();
+        } else {
+          debugPrint('WARNING: API Response: Data field is unexpected type: ${data.runtimeType}');
+          return [];
+        }
+      } else if (decodedBody is List) {
+        debugPrint('API Response: Direct list of ${decodedBody.length} applications');
+        return decodedBody.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint('WARNING: Unexpected response format: ${decodedBody.runtimeType}');
+        return [];
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch applications';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get all pending applications (admin only)
+  ///
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns list of pending applications
+  Future<List<Map<String, dynamic>>> getPendingApplications({
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/applications/pending');
+
+    debugPrint('Fetching pending applications: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Pending applications API Response Status: ${response.statusCode}');
+    debugPrint('Pending applications API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final dynamic decodedBody = jsonDecode(response.body);
+
+      if (decodedBody is Map<String, dynamic>) {
+        final body = decodedBody;
+        final data = body['data'];
+
+        if (data == null) {
+          debugPrint('API Response: Data field is null, returning empty list');
+          return [];
+        }
+
+        if (data is List) {
+          debugPrint('API Response: Data field is a list of ${data.length} applications');
+          return data.cast<Map<String, dynamic>>();
+        } else {
+          debugPrint('WARNING: API Response: Data field is unexpected type: ${data.runtimeType}');
+          return [];
+        }
+      } else if (decodedBody is List) {
+        debugPrint('API Response: Direct list of ${decodedBody.length} applications');
+        return decodedBody.cast<Map<String, dynamic>>();
+      } else {
+        debugPrint('WARNING: Unexpected response format: ${decodedBody.runtimeType}');
+        return [];
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch pending applications';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Approve an application (admin only)
+  ///
+  /// [applicationId] - Application ID to approve
+  /// [token] - JWT authentication token (must be admin)
+  /// Returns updated application
+  Future<Map<String, dynamic>> approveApplication({
+    required String applicationId,
+    required String token,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/applications/$applicationId/approve');
+
+    debugPrint('Approving application: $uri');
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Approve application API Response Status: ${response.statusCode}');
+    debugPrint('Approve application API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to approve application';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Reject an application (admin only)
+  ///
+  /// [applicationId] - Application ID to reject
+  /// [token] - JWT authentication token (must be admin)
+  /// [reason] - Reason for rejection
+  /// Returns updated application
+  Future<Map<String, dynamic>> rejectApplication({
+    required String applicationId,
+    required String token,
+    required String reason,
+  }) async {
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/admin/applications/$applicationId/reject');
+
+    debugPrint('Rejecting application: $uri');
+    debugPrint('Rejection reason: $reason');
+
+    final response = await http.post(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode({'reason': reason}),
+    );
+
+    debugPrint('Reject application API Response Status: ${response.statusCode}');
+    debugPrint('Reject application API Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to reject application';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
 }

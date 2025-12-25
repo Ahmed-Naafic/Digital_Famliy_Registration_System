@@ -19,6 +19,11 @@ import '../../features/family_profile/presentation/pages/family_profile_page.dar
 import '../../features/family_profile/presentation/pages/create_family_page.dart';
 import '../../features/application_status/presentation/pages/application_status_page.dart';
 import '../../features/certificate_viewer/presentation/pages/certificate_viewer_page.dart';
+import '../../features/admin/presentation/pages/applications_page.dart';
+import '../../features/admin/presentation/pages/citizens_page.dart';
+import '../../features/admin/presentation/pages/families_page.dart';
+import '../../features/admin/presentation/pages/services_page.dart';
+import '../../features/admin/presentation/pages/admin_certificates_page.dart';
 import 'route_names.dart';
 
 /// App Router Configuration
@@ -32,15 +37,24 @@ final GoRouter appRouter = GoRouter(
 
     // Ensure auth has had a chance to restore session before applying guards.
     if (!auth.isInitialized) {
-      if (state.fullPath != '/' && state.fullPath != '/splash') {
-        return '/';
+      // Allow splash screen and auth routes while initializing
+      if (state.fullPath == '/' ||
+          state.fullPath == '/login' ||
+          state.fullPath == '/register' ||
+          state.fullPath == '/forgot-password') {
+        return null;
       }
-      return null;
+      return '/';
     }
 
     final bool loggedIn = auth.isAuthenticated;
     final String role = auth.role;
     final String path = state.fullPath ?? '/';
+
+    // Allow splash screen to handle its own navigation
+    if (path == '/') {
+      return null;
+    }
 
     final bool isAuthRoute =
         path == '/login' || path == '/register' || path == '/forgot-password';
@@ -50,7 +64,7 @@ final GoRouter appRouter = GoRouter(
       return '/login';
     }
 
-    // If logged in and on auth routes, check family status for citizens
+    // If logged in and on auth routes, redirect to appropriate dashboard
     if (loggedIn && isAuthRoute) {
       if (role == 'admin') {
         return '/admin';
@@ -63,12 +77,15 @@ final GoRouter appRouter = GoRouter(
     // Role-based restrictions for admin vs citizen routes.
     if (loggedIn) {
       if (role == 'admin') {
-        // Prevent admin from citizen-only flows if needed.
-        // (Currently admin can only be blocked from explicit citizen dashboard.)
+        // Prevent admin from citizen-only flows
         if (path == '/dashboard') return '/admin';
+        // Allow admin to access admin routes
+        if (path.startsWith('/admin')) return null;
       } else {
-        // citizen role
-        if (path == '/admin') return '/dashboard';
+        // citizen role - prevent access to admin routes
+        if (path == '/admin' || path.startsWith('/admin/')) {
+          return '/dashboard';
+        }
       }
     }
 
@@ -127,6 +144,31 @@ final GoRouter appRouter = GoRouter(
       name: Routes.admin,
       builder: (context, state) => const AdminDashboardScreen(),
     ),
+    GoRoute(
+      path: '/admin/applications',
+      name: Routes.adminApplications,
+      builder: (context, state) => const ApplicationsPage(),
+    ),
+    GoRoute(
+      path: '/admin/citizens',
+      name: Routes.adminCitizens,
+      builder: (context, state) => const CitizensPage(),
+    ),
+    GoRoute(
+      path: '/admin/families',
+      name: Routes.adminFamilies,
+      builder: (context, state) => const FamiliesPage(),
+    ),
+    GoRoute(
+      path: '/admin/certificates',
+      name: Routes.adminCertificates,
+      builder: (context, state) => const AdminCertificatesPage(),
+    ),
+    GoRoute(
+      path: '/admin/services',
+      name: Routes.adminServices,
+      builder: (context, state) => const ServicesPage(),
+    ),
 
     // Citizen service routes
     GoRoute(
@@ -178,5 +220,3 @@ class _AuthRouterListenable extends ChangeNotifier {
     // Intentionally left simple – the router will read AuthProvider via context.
   }
 }
-
-

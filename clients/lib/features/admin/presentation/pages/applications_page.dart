@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../../../../core/services/application_service.dart';
+import '../../../../core/router/route_names.dart';
 import '../../../../features/application_status/data/application_model.dart';
+import '../../../../features/auth/auth_provider.dart';
 
 /// Applications Page
 /// Displays all applications with filtering and status management
@@ -13,29 +16,73 @@ class ApplicationsPage extends StatefulWidget {
   State<ApplicationsPage> createState() => _ApplicationsPageState();
 }
 
-class _ApplicationsPageState extends State<ApplicationsPage> {
-  String _selectedFilter = 'All';
+class _ApplicationsPageState extends State<ApplicationsPage> with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  bool _isLoading = false;
 
-  List<Application> get _filteredApplications {
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this);
+    _loadAllApplications();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadAllApplications() async {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final applicationService = Provider.of<ApplicationService>(context, listen: false);
+    final token = authProvider.token;
+
+    if (token == null || token.isEmpty) {
+      return;
+    }
+
+    setState(() => _isLoading = true);
+    applicationService.setAdminToken(token);
+
+    try {
+      await applicationService.fetchAllApplications(token);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading applications: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  List<Application> _getApplicationsForTab(int index) {
     final applicationService = Provider.of<ApplicationService>(
       context,
       listen: false,
     );
-    final allApplications = applicationService.applications;
 
-    if (_selectedFilter == 'All') {
-      return allApplications
-        ..sort((a, b) => b.submittedDate.compareTo(a.submittedDate));
+    List<Application> apps;
+    switch (index) {
+      case 0:
+        apps = List<Application>.from(applicationService.pendingApplications);
+        break;
+      case 1:
+        apps = List<Application>.from(applicationService.approvedApplications);
+        break;
+      case 2:
+        apps = List<Application>.from(applicationService.rejectedApplications);
+        break;
+      default:
+        apps = [];
     }
 
-    final status = _selectedFilter == 'Pending'
-        ? ApplicationStatus.pending
-        : _selectedFilter == 'Approved'
-        ? ApplicationStatus.approved
-        : ApplicationStatus.rejected;
-
-    return allApplications.where((app) => app.status == status).toList()
-      ..sort((a, b) => b.submittedDate.compareTo(a.submittedDate));
+    apps.sort((a, b) => b.submittedDate.compareTo(a.submittedDate));
+    return apps;
   }
 
   void _showRejectionDialog(BuildContext context, Application application) {
@@ -106,6 +153,17 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
       context,
       listen: false,
     );
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication token missing')),
+      );
+      return;
+    }
+
+    applicationService.setAdminToken(token);
 
     showDialog(
       context: context,
@@ -114,16 +172,23 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
     );
 
     try {
+      // Validate application ID before calling approve
+      if (application.id.isEmpty) {
+        throw Exception('Application ID is missing');
+      }
+
       await applicationService.approveApplication(application.id);
 
       if (context.mounted) {
         Navigator.pop(context); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Application approved. Certificate created.'),
+          const SnackBar(
+            content: Text('Application approved successfully'),
             backgroundColor: Colors.green,
           ),
         );
+        // Refresh all lists
+        _loadAllApplications();
       }
     } catch (e) {
       if (context.mounted) {
@@ -144,6 +209,17 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
       context,
       listen: false,
     );
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    final token = authProvider.token;
+
+    if (token == null || token.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Authentication token missing')),
+      );
+      return;
+    }
+
+    applicationService.setAdminToken(token);
 
     showDialog(
       context: context,
@@ -152,6 +228,11 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
     );
 
     try {
+      // Validate application ID before calling reject
+      if (application.id.isEmpty) {
+        throw Exception('Application ID is missing');
+      }
+
       await applicationService.rejectApplication(
         application.id,
         reason: reason,
@@ -161,10 +242,12 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
         Navigator.pop(context); // Close loading dialog
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Application rejected.'),
+            content: Text('Application rejected successfully'),
             backgroundColor: Colors.orange,
           ),
         );
+        // Refresh all lists
+        _loadAllApplications();
       }
     } catch (e) {
       if (context.mounted) {
@@ -248,193 +331,193 @@ class _ApplicationsPageState extends State<ApplicationsPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Applications')),
+      appBar: AppBar(
+        title: const Text('Applications'),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => context.goNamed(Routes.admin),
+        ),
+        bottom: TabBar(
+          controller: _tabController,
+          tabs: const [
+            Tab(text: 'Pending'),
+            Tab(text: 'Approved'),
+            Tab(text: 'Rejected'),
+          ],
+        ),
+      ),
       body: Consumer<ApplicationService>(
         builder: (context, applicationService, child) {
-          final applications = _filteredApplications;
-
-          return Column(
-            children: [
-              // Filter Chips
-              Container(
-                padding: const EdgeInsets.all(16),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: ['All', 'Pending', 'Approved', 'Rejected'].map((
-                      filter,
-                    ) {
-                      final isSelected = _selectedFilter == filter;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: FilterChip(
-                          selected: isSelected,
-                          label: Text(filter),
-                          onSelected: (selected) {
-                            setState(() {
-                              _selectedFilter = filter;
-                            });
-                          },
-                          selectedColor: colorScheme.primary.withOpacity(0.2),
-                          checkmarkColor: colorScheme.primary,
-                        ),
-                      );
-                    }).toList(),
-                  ),
-                ),
-              ),
-
-              // Applications List
-              Expanded(
-                child: applications.isEmpty
-                    ? Center(
-                        child: Text(
-                          'No applications found',
-                          style: Theme.of(context).textTheme.bodyLarge
-                              ?.copyWith(
-                                color: colorScheme.onSurface.withOpacity(0.5),
-                              ),
-                        ),
-                      )
-                    : ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: applications.length,
-                        itemBuilder: (context, index) {
-                          final app = applications[index];
-                          final statusColor = app.status.color;
-                          final dateFormat = DateFormat('yyyy-MM-dd');
-
-                          return Card(
-                            margin: const EdgeInsets.only(bottom: 12),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: ListTile(
-                              contentPadding: const EdgeInsets.all(16),
-                              leading: Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: statusColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Icon(app.type.icon, color: statusColor),
-                              ),
-                              title: Text(
-                                app.citizenName,
-                                style: Theme.of(context).textTheme.bodyLarge
-                                    ?.copyWith(fontWeight: FontWeight.w600),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const SizedBox(height: 4),
-                                  Text(app.type.displayName),
-                                  Text(
-                                    dateFormat.format(app.submittedDate),
-                                    style: Theme.of(
-                                      context,
-                                    ).textTheme.bodySmall,
-                                  ),
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 6,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: statusColor.withOpacity(0.1),
-                                      borderRadius: BorderRadius.circular(20),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(
-                                          app.status.icon,
-                                          color: statusColor,
-                                          size: 16,
-                                        ),
-                                        const SizedBox(width: 6),
-                                        Text(
-                                          app.status.displayName,
-                                          style: TextStyle(
-                                            color: statusColor,
-                                            fontSize: 12,
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                  PopupMenuButton(
-                                    itemBuilder: (context) => [
-                                      if (app.status ==
-                                          ApplicationStatus.pending)
-                                        const PopupMenuItem(
-                                          value: 'approve',
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.check,
-                                                color: Colors.green,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('Approve'),
-                                            ],
-                                          ),
-                                        ),
-                                      if (app.status ==
-                                          ApplicationStatus.pending)
-                                        const PopupMenuItem(
-                                          value: 'reject',
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                Icons.close,
-                                                color: Colors.red,
-                                              ),
-                                              SizedBox(width: 8),
-                                              Text('Reject'),
-                                            ],
-                                          ),
-                                        ),
-                                      const PopupMenuItem(
-                                        value: 'view',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.visibility),
-                                            SizedBox(width: 8),
-                                            Text('View Details'),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    onSelected: (value) {
-                                      if (value == 'approve') {
-                                        _approveApplication(context, app);
-                                      } else if (value == 'reject') {
-                                        _showRejectionDialog(context, app);
-                                      } else if (value == 'view') {
-                                        _viewApplicationDetails(context, app);
-                                      }
-                                    },
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ),
-            ],
-          );
+          return _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : TabBarView(
+                  controller: _tabController,
+                  children: [
+                    _buildApplicationsList(0, colorScheme),
+                    _buildApplicationsList(1, colorScheme),
+                    _buildApplicationsList(2, colorScheme),
+                  ],
+                );
         },
       ),
     );
+  }
+
+  Widget _buildApplicationsList(int tabIndex, ColorScheme colorScheme) {
+    return Consumer<ApplicationService>(
+      builder: (context, applicationService, child) {
+        final applications = _getApplicationsForTab(tabIndex);
+
+        if (applications.isEmpty) {
+          return Center(
+            child: Text(
+              'No ${_getTabName(tabIndex).toLowerCase()} applications found',
+              style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: colorScheme.onSurface.withOpacity(0.5),
+                  ),
+            ),
+          );
+        }
+
+        return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+          itemCount: applications.length,
+          itemBuilder: (context, index) {
+            final app = applications[index];
+            final statusColor = app.status.color;
+            final dateFormat = DateFormat('yyyy-MM-dd');
+
+            return Card(
+              margin: const EdgeInsets.only(bottom: 12, left: 16, right: 16),
+              elevation: 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: ListTile(
+                contentPadding: const EdgeInsets.all(16),
+                leading: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: statusColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(app.type.icon, color: statusColor),
+                ),
+                title: Text(
+                  app.citizenName,
+                  style: Theme.of(context).textTheme.bodyLarge
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 4),
+                    Text(app.type.displayName),
+                    Text(
+                      dateFormat.format(app.submittedDate),
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: statusColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            app.status.icon,
+                            color: statusColor,
+                            size: 16,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            app.status.displayName,
+                            style: TextStyle(
+                              color: statusColor,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    PopupMenuButton(
+                      itemBuilder: (context) => [
+                        // Only show approve/reject for pending applications
+                        if (tabIndex == 0 && app.status == ApplicationStatus.pending)
+                          const PopupMenuItem(
+                            value: 'approve',
+                            child: Row(
+                              children: [
+                                Icon(Icons.check, color: Colors.green),
+                                SizedBox(width: 8),
+                                Text('Approve'),
+                              ],
+                            ),
+                          ),
+                        if (tabIndex == 0 && app.status == ApplicationStatus.pending)
+                          const PopupMenuItem(
+                            value: 'reject',
+                            child: Row(
+                              children: [
+                                Icon(Icons.close, color: Colors.red),
+                                SizedBox(width: 8),
+                                Text('Reject'),
+                              ],
+                            ),
+                          ),
+                        const PopupMenuItem(
+                          value: 'view',
+                          child: Row(
+                            children: [
+                              Icon(Icons.visibility),
+                              SizedBox(width: 8),
+                              Text('View Details'),
+                            ],
+                          ),
+                        ),
+                      ],
+                      onSelected: (value) {
+                        if (value == 'approve') {
+                          _approveApplication(context, app);
+                        } else if (value == 'reject') {
+                          _showRejectionDialog(context, app);
+                        } else if (value == 'view') {
+                          _viewApplicationDetails(context, app);
+                        }
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _getTabName(int index) {
+    switch (index) {
+      case 0:
+        return 'Pending';
+      case 1:
+        return 'Approved';
+      case 2:
+        return 'Rejected';
+      default:
+        return '';
+    }
   }
 }

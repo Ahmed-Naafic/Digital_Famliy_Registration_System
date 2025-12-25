@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:go_router/go_router.dart';
@@ -225,9 +226,14 @@ class SidebarWidget extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context);
                     authProvider.logout();
-                    // Clear family state on logout
-                    final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
-                    familyProvider.reset();
+                    // Clear family state on logout (only if FamilyProvider exists)
+                    try {
+                      final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
+                      familyProvider.reset();
+                    } catch (e) {
+                      // FamilyProvider not available (e.g., in admin routes)
+                      debugPrint('FamilyProvider not available during logout: $e');
+                    }
                     context.goNamed(Routes.login);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(

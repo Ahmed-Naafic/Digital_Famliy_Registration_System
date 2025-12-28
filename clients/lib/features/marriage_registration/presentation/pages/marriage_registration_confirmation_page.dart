@@ -17,6 +17,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
     MarriageFormProvider provider,
     int step,
   ) {
+    if (!context.mounted) return;
     provider.updateCurrentStep(step);
     Navigator.pop(context);
   }
@@ -25,6 +26,8 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
     BuildContext context,
     MarriageFormProvider provider,
   ) async {
+    if (!context.mounted) return;
+    
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
     final applicationService = const ApplicationService();
     final token = authProvider.token;
@@ -61,11 +64,17 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
       final documentFiles = provider.getDocumentFiles();
       debugPrint('Document files: ${documentFiles.length}');
 
-      // Submit application to backend with files
-      debugPrint('Calling applicationService.submitApplication...');
-      await applicationService.submitApplication(
-        type: 'marriage',
-        payload: payload,
+      // Submit marriage application to backend with files
+      debugPrint('Calling applicationService.submitMarriageApplication...');
+      await applicationService.submitMarriageApplication(
+        applicantNationalId: payload['applicantNationalId'] as String,
+        groomNationalId: payload['groomNationalId'] as String,
+        brideNationalId: payload['brideNationalId'] as String,
+        wali: payload['wali'] as Map<String, dynamic>,
+        witnesses: payload['witnesses'] as List<Map<String, dynamic>>,
+        sheikh: payload['sheikh'] as Map<String, dynamic>,
+        meher: payload['meher'] as Map<String, dynamic>,
+        marriageDetails: payload['marriageDetails'] as Map<String, dynamic>,
         token: token,
         documents: documentFiles,
       );
@@ -108,18 +117,21 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<MarriageFormProvider>(
-      builder: (context, provider, child) {
-        final colorScheme = Theme.of(context).colorScheme;
-        final textTheme = Theme.of(context).textTheme;
+    final provider = Provider.of<MarriageFormProvider>(context, listen: true);
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
 
-        return Scaffold(
+    return Scaffold(
           appBar: AppBar(
             title: const Text('Review & Submit'),
             elevation: 0,
             leading: IconButton(
               icon: const Icon(Icons.arrow_back),
-              onPressed: () => Navigator.pop(context),
+              onPressed: () {
+                if (context.mounted) {
+                  Navigator.pop(context);
+                }
+              },
             ),
           ),
           body: SingleChildScrollView(
@@ -143,43 +155,35 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
 
-                // Husband Details
+                // Applicant Details
                 Card(
                   child: Column(
                     children: [
                       ListTile(
-                        leading: Icon(Icons.person, color: colorScheme.primary),
+                        leading: Icon(Icons.person_outline, color: colorScheme.primary),
                         title: Text(
-                          'Husband Details',
+                          'Applicant Details',
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         trailing: TextButton(
                           onPressed: () => _onEditStep(context, provider, 0),
-                          child: const Text('Edit Husband Details'),
+                          child: const Text('Edit'),
                         ),
                       ),
                       const Divider(height: 1),
                       _buildInfoTile(
                         context,
                         'Name',
-                        provider.husbandName ?? '',
+                        provider.applicantIdentity?.fullName ?? '',
                       ),
-                      if (provider.husbandDateOfBirth != null)
-                        _buildInfoTile(
-                          context,
-                          'Date of Birth',
-                          DateFormat(
-                            'yyyy-MM-dd',
-                          ).format(provider.husbandDateOfBirth!),
-                        ),
-                      if (provider.husbandNationalId != null &&
-                          provider.husbandNationalId!.isNotEmpty)
+                      if (provider.applicantNationalId != null &&
+                          provider.applicantNationalId!.isNotEmpty)
                         _buildInfoTile(
                           context,
                           'National ID',
-                          provider.husbandNationalId!,
+                          provider.applicantNationalId!,
                         ),
                     ],
                   ),
@@ -187,46 +191,126 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
 
                 const SizedBox(height: 16),
 
-                // Wife Details
+                // Groom Details
                 Card(
                   child: Column(
                     children: [
                       ListTile(
                         leading: Icon(Icons.person, color: colorScheme.primary),
                         title: Text(
-                          'Wife Details',
+                          'Groom Details',
                           style: textTheme.titleMedium?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         trailing: TextButton(
                           onPressed: () => _onEditStep(context, provider, 1),
-                          child: const Text('Edit Wife Details'),
+                          child: const Text('Edit'),
                         ),
                       ),
                       const Divider(height: 1),
-                      _buildInfoTile(context, 'Name', provider.wifeName ?? ''),
-                      if (provider.wifeDateOfBirth != null)
-                        _buildInfoTile(
-                          context,
-                          'Date of Birth',
-                          DateFormat(
-                            'yyyy-MM-dd',
-                          ).format(provider.wifeDateOfBirth!),
-                        ),
-                      if (provider.wifeNationalId != null &&
-                          provider.wifeNationalId!.isNotEmpty)
+                      _buildInfoTile(
+                        context,
+                        'Name',
+                        provider.groomIdentity?.fullName ?? '',
+                      ),
+                      if (provider.groomNationalId != null &&
+                          provider.groomNationalId!.isNotEmpty)
                         _buildInfoTile(
                           context,
                           'National ID',
-                          provider.wifeNationalId!,
+                          provider.groomNationalId!,
                         ),
-                      if (provider.wifeAddress != null &&
-                          provider.wifeAddress!.isNotEmpty)
+                      if (provider.groomIdentity?.dateOfBirth != null)
                         _buildInfoTile(
                           context,
-                          'Address',
-                          provider.wifeAddress!,
+                          'Date of Birth',
+                          provider.groomIdentity!.dateOfBirth!,
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Bride Details
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.person, color: colorScheme.primary),
+                        title: Text(
+                          'Bride Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 2),
+                          child: const Text('Edit'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      _buildInfoTile(
+                        context,
+                        'Name',
+                        provider.brideIdentity?.fullName ?? '',
+                      ),
+                      if (provider.brideNationalId != null &&
+                          provider.brideNationalId!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'National ID',
+                          provider.brideNationalId!,
+                        ),
+                      if (provider.brideIdentity?.dateOfBirth != null)
+                        _buildInfoTile(
+                          context,
+                          'Date of Birth',
+                          provider.brideIdentity!.dateOfBirth!,
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Wali Details
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.family_restroom, color: colorScheme.primary),
+                        title: Text(
+                          'Wali Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 3),
+                          child: const Text('Edit'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      _buildInfoTile(
+                        context,
+                        'Name',
+                        provider.waliIdentity?.fullName ?? '',
+                      ),
+                      if (provider.waliNationalId != null &&
+                          provider.waliNationalId!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'National ID',
+                          provider.waliNationalId!,
+                        ),
+                      if (provider.waliRelationship != null &&
+                          provider.waliRelationship!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Relationship',
+                          provider.waliRelationship!.toUpperCase(),
                         ),
                     ],
                   ),
@@ -250,15 +334,15 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 2),
-                          child: const Text('Edit Witness Details'),
+                          onPressed: () => _onEditStep(context, provider, 4),
+                          child: const Text('Edit'),
                         ),
                       ),
                       const Divider(height: 1),
                       _buildInfoTile(
                         context,
                         'Witness 1 Name',
-                        provider.witness1 ?? '',
+                        provider.witness1Identity?.fullName ?? '',
                       ),
                       if (provider.witness1NationalId != null &&
                           provider.witness1NationalId!.isNotEmpty)
@@ -270,7 +354,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                       _buildInfoTile(
                         context,
                         'Witness 2 Name',
-                        provider.witness2 ?? '',
+                        provider.witness2Identity?.fullName ?? '',
                       ),
                       if (provider.witness2NationalId != null &&
                           provider.witness2NationalId!.isNotEmpty)
@@ -279,6 +363,90 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           'Witness 2 National ID',
                           provider.witness2NationalId!,
                         ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Sheikh Details
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.account_circle, color: colorScheme.primary),
+                        title: Text(
+                          'Sheikh Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 5),
+                          child: const Text('Edit'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      _buildInfoTile(
+                        context,
+                        'Name',
+                        provider.sheikhIdentity?.fullName ?? '',
+                      ),
+                      if (provider.sheikhNationalId != null &&
+                          provider.sheikhNationalId!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'National ID',
+                          provider.sheikhNationalId!,
+                        ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Meher Details
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.attach_money, color: colorScheme.primary),
+                        title: Text(
+                          'Meher Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 6),
+                          child: const Text('Edit'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      if (provider.meherType != null && provider.meherType!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Type',
+                          provider.meherType!,
+                        ),
+                      if (provider.meherValue != null)
+                        _buildInfoTile(
+                          context,
+                          'Value',
+                          provider.meherValue!.toStringAsFixed(2),
+                        ),
+                      if (provider.meherCurrency != null &&
+                          provider.meherCurrency!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Currency',
+                          provider.meherCurrency!,
+                        ),
+                      _buildInfoTile(
+                        context,
+                        'Deferred',
+                        provider.meherDeferred ? 'Yes' : 'No',
+                      ),
                     ],
                   ),
                 ),
@@ -301,8 +469,8 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 3),
-                          child: const Text('Edit Marriage Details'),
+                          onPressed: () => _onEditStep(context, provider, 7),
+                          child: const Text('Edit'),
                         ),
                       ),
                       const Divider(height: 1),
@@ -314,11 +482,27 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                             'yyyy-MM-dd',
                           ).format(provider.marriageDate!),
                         ),
-                      _buildInfoTile(
-                        context,
-                        'Location',
-                        provider.location ?? '',
-                      ),
+                      if (provider.marriageDistrict != null &&
+                          provider.marriageDistrict!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'District',
+                          provider.marriageDistrict!,
+                        ),
+                      if (provider.marriageSector != null &&
+                          provider.marriageSector!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Sector',
+                          provider.marriageSector!,
+                        ),
+                      if (provider.marriagePlace != null &&
+                          provider.marriagePlace!.isNotEmpty)
+                        _buildInfoTile(
+                          context,
+                          'Place',
+                          provider.marriagePlace!,
+                        ),
                     ],
                   ),
                 ),
@@ -341,7 +525,7 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
                           ),
                         ),
                         trailing: TextButton(
-                          onPressed: () => _onEditStep(context, provider, 3),
+                          onPressed: () => _onEditStep(context, provider, 8),
                           child: const Text('Edit Documents'),
                         ),
                       ),
@@ -400,8 +584,6 @@ class MarriageRegistrationConfirmationPage extends StatelessWidget {
             ),
           ),
         );
-      },
-    );
   }
 
   Widget _buildDocumentTile(BuildContext context, UploadedDocument doc) {

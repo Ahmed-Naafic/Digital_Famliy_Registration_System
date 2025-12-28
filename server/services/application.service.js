@@ -1,35 +1,97 @@
 import Application from '../models/Application.model.js';
-import FamilyMember from '../models/FamilyMember.model.js';
-import Family from '../models/Family.model.js';
-import { createCertificate } from './certificate.service.js';
-
-const APPLICATION_TYPES = ['birth', 'marriage', 'divorce', 'death'];
+import { fetchPersonByNationalId } from './nira.service.js';
 
 /**
- * Submit a new application
+ * Create a Birth application (CRVS)
+ * Applicant, father, and mother are verified via NIRA using National IDs
  * @param {Object} params - Application data
  * @param {string} params.userId - User ID from token
- * @param {string} params.type - Application type (birth, marriage, divorce, death)
- * @param {Object} params.payload - Form data
+ * @param {string} params.applicantNationalId - Applicant's National ID
+ * @param {Object} params.child - Child information
+ * @param {string} params.fatherNationalId - Father's National ID
+ * @param {string} params.motherNationalId - Mother's National ID
+ * @param {Object} params.fatherResidence - Father's administrative location
+ * @param {string} params.fatherResidence.district - Father's district
+ * @param {string} params.fatherResidence.sector - Father's sector
+ * @param {Object} params.motherResidence - Mother's administrative location
+ * @param {string} params.motherResidence.district - Mother's district
+ * @param {string} params.motherResidence.sector - Mother's sector
  * @param {Array} params.documents - Document metadata array
  * @returns {Promise<Object>} Created application
  */
-export const submitApplication = async ({ userId, type, payload, documents = [] }) => {
-  // Validate application type
-  if (!APPLICATION_TYPES.includes(type)) {
-    const error = new Error(`Invalid application type. Must be one of: ${APPLICATION_TYPES.join(', ')}`);
-    error.statusCode = 400;
-    throw error;
-  }
-
+export const createBirthApplication = async ({
+  userId,
+  applicantNationalId,
+  child,
+  fatherNationalId,
+  motherNationalId,
+  fatherResidence,
+  motherResidence,
+  documents = [],
+}) => {
   // Validate required fields
-  if (!payload || typeof payload !== 'object' || Object.keys(payload).length === 0) {
-    const error = new Error('Payload is required and must be a non-empty object');
+  if (!applicantNationalId || typeof applicantNationalId !== 'string' || applicantNationalId.trim().length === 0) {
+    const error = new Error('Applicant National ID is required');
     error.statusCode = 400;
     throw error;
   }
 
-  // Validate documents array - must contain valid metadata objects only
+  if (!child || typeof child !== 'object') {
+    const error = new Error('Child information is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!fatherNationalId || typeof fatherNationalId !== 'string' || fatherNationalId.trim().length === 0) {
+    const error = new Error('Father National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!motherNationalId || typeof motherNationalId !== 'string' || motherNationalId.trim().length === 0) {
+    const error = new Error('Mother National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate parent residence
+  if (!fatherResidence || typeof fatherResidence !== 'object') {
+    const error = new Error('Father residence (district, sector) is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!fatherResidence.district || typeof fatherResidence.district !== 'string' || fatherResidence.district.trim().length === 0) {
+    const error = new Error('Father district is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!fatherResidence.sector || typeof fatherResidence.sector !== 'string' || fatherResidence.sector.trim().length === 0) {
+    const error = new Error('Father sector is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!motherResidence || typeof motherResidence !== 'object') {
+    const error = new Error('Mother residence (district, sector) is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!motherResidence.district || typeof motherResidence.district !== 'string' || motherResidence.district.trim().length === 0) {
+    const error = new Error('Mother district is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!motherResidence.sector || typeof motherResidence.sector !== 'string' || motherResidence.sector.trim().length === 0) {
+    const error = new Error('Mother sector is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate documents array
   if (documents && documents.length > 0) {
     for (const doc of documents) {
       if (!doc.fileName || !doc.filePath) {
@@ -40,152 +102,492 @@ export const submitApplication = async ({ userId, type, payload, documents = [] 
     }
   }
 
-  // Get user's family for validation
-  const family = await Family.findOne({
-    linkedUsers: userId,
-    status: 'active',
-  });
-
-  if (!family) {
-    const error = new Error('User does not have an active family');
-    error.statusCode = 400;
-    throw error;
+  // Verify applicant via NIRA
+  let applicantSnapshot;
+  try {
+    const applicantData = await fetchPersonByNationalId(applicantNationalId.trim());
+    applicantSnapshot = {
+      nationalId: applicantData.nationalId,
+      fullName: applicantData.fullName,
+      dateOfBirth: applicantData.dateOfBirth,
+      gender: applicantData.gender,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify applicant: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
   }
 
-  // Validate application-specific requirements
-  await validateApplicationPayload(type, payload, family._id);
+  // Verify father via NIRA
+  let fatherSnapshot;
+  try {
+    const fatherData = await fetchPersonByNationalId(fatherNationalId.trim());
+    fatherSnapshot = {
+      nationalId: fatherData.nationalId,
+      fullName: fatherData.fullName,
+      dateOfBirth: fatherData.dateOfBirth,
+      gender: fatherData.gender,
+      status: fatherData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify father: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Verify mother via NIRA
+  let motherSnapshot;
+  try {
+    const motherData = await fetchPersonByNationalId(motherNationalId.trim());
+    motherSnapshot = {
+      nationalId: motherData.nationalId,
+      fullName: motherData.fullName,
+      dateOfBirth: motherData.dateOfBirth,
+      gender: motherData.gender,
+      status: motherData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify mother: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Create application payload with Birth structure
+  const payload = {
+    birth: {
+      applicant: {
+        nationalId: applicantNationalId.trim(),
+        snapshot: applicantSnapshot,
+      },
+      child: {
+        name: child.name || '',
+        dateOfBirth: child.dateOfBirth || null,
+        placeOfBirth: child.placeOfBirth || '',
+        gender: child.gender || null,
+        nationality: child.nationality || '',
+      },
+      fatherNationalId: fatherNationalId.trim(),
+      motherNationalId: motherNationalId.trim(),
+      fatherSnapshot: fatherSnapshot,
+      motherSnapshot: motherSnapshot,
+      fatherResidence: {
+        district: fatherResidence.district.trim(),
+        sector: fatherResidence.sector.trim(),
+      },
+      motherResidence: {
+        district: motherResidence.district.trim(),
+        sector: motherResidence.sector.trim(),
+      },
+    },
+  };
 
   // Create application with status 'pending'
   const application = await Application.create({
     userId,
-    familyId: family._id,
-    type,
+    applicationType: 'BIRTH',
+    type: 'birth',
     payload,
     documents: documents && documents.length > 0 ? documents : [],
     status: 'pending',
   });
 
-  // Populate userId to return user info if needed
+  // Populate userId to return user info
   await application.populate('userId', 'fullName email');
 
   return application;
 };
 
 /**
- * Validate application payload based on type
- * Ensures IDs are provided and belong to user's family
- * @param {string} type - Application type
- * @param {Object} payload - Payload to validate
- * @param {ObjectId} familyId - User's family ID
- * @throws {Error} If validation fails
+ * Create a Marriage application (CRVS - Islamic Law)
+ * All parties verified via NIRA using National IDs
+ * Enforces Islamic marriage rules:
+ * - Groom limited to 4 wives
+ * - Bride strictly monogamous
+ * - Wali must be male
+ * - Two male witnesses required
+ * - Sheikh must be male
+ * @param {Object} params - Application data
+ * @param {string} params.userId - User ID from token
+ * @param {string} params.applicantNationalId - Applicant's National ID
+ * @param {string} params.groomNationalId - Groom's National ID
+ * @param {string} params.brideNationalId - Bride's National ID
+ * @param {Object} params.wali - Wali information
+ * @param {string} params.wali.nationalId - Wali's National ID
+ * @param {string} params.wali.relationship - Relationship to bride (father, brother, etc.)
+ * @param {Array} params.witnesses - Array of 2 witness objects
+ * @param {string} params.witnesses[].nationalId - Witness National ID
+ * @param {Object} params.sheikh - Sheikh information
+ * @param {string} params.sheikh.nationalId - Sheikh's National ID
+ * @param {Object} params.meher - Meher information
+ * @param {string} params.meher.type - "CASH" or "ASSET"
+ * @param {number} params.meher.value - Meher value
+ * @param {string} params.meher.currency - Currency (if CASH)
+ * @param {boolean} params.meher.deferred - Whether meher is deferred
+ * @param {Object} params.marriageDetails - Marriage details
+ * @param {string} params.marriageDetails.date - Marriage date
+ * @param {string} params.marriageDetails.district - District
+ * @param {string} params.marriageDetails.sector - Sector
+ * @param {string} params.marriageDetails.place - Place of marriage
+ * @param {Array} params.documents - Document metadata array
+ * @returns {Promise<Object>} Created application
  */
-const validateApplicationPayload = async (type, payload, familyId) => {
-  if (type === 'birth') {
-    // Birth requires fatherId and motherId
-    if (!payload.fatherId || !payload.motherId) {
-      const error = new Error('Birth registration requires fatherId and motherId');
-      error.statusCode = 400;
-      throw error;
-    }
+export const createMarriageApplication = async ({
+  userId,
+  applicantNationalId,
+  groomNationalId,
+  brideNationalId,
+  wali,
+  witnesses,
+  sheikh,
+  meher,
+  marriageDetails,
+  documents = [],
+}) => {
+  // Validate required fields
+  if (!applicantNationalId || typeof applicantNationalId !== 'string' || applicantNationalId.trim().length === 0) {
+    const error = new Error('Applicant National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate father belongs to family
-    const father = await FamilyMember.findOne({
-      _id: payload.fatherId,
-      familyId: familyId,
-    });
-    if (!father) {
-      const error = new Error('Father must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!groomNationalId || typeof groomNationalId !== 'string' || groomNationalId.trim().length === 0) {
+    const error = new Error('Groom National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate mother belongs to family
-    const mother = await FamilyMember.findOne({
-      _id: payload.motherId,
-      familyId: familyId,
-    });
-    if (!mother) {
-      const error = new Error('Mother must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
-  } else if (type === 'marriage') {
-    // Marriage requires husbandId and wifeId
-    if (!payload.husbandId || !payload.wifeId) {
-      const error = new Error('Marriage registration requires husbandId and wifeId');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!brideNationalId || typeof brideNationalId !== 'string' || brideNationalId.trim().length === 0) {
+    const error = new Error('Bride National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate husband belongs to family
-    const husband = await FamilyMember.findOne({
-      _id: payload.husbandId,
-      familyId: familyId,
-    });
-    if (!husband) {
-      const error = new Error('Husband must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!wali || typeof wali !== 'object' || !wali.nationalId || !wali.relationship) {
+    const error = new Error('Wali information (nationalId, relationship) is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate wife belongs to family
-    const wife = await FamilyMember.findOne({
-      _id: payload.wifeId,
-      familyId: familyId,
-    });
-    if (!wife) {
-      const error = new Error('Wife must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
-  } else if (type === 'death') {
-    // Death requires deceasedId
-    if (!payload.deceasedId) {
-      const error = new Error('Death registration requires deceasedId');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!Array.isArray(witnesses) || witnesses.length !== 2) {
+    const error = new Error('Exactly two witnesses are required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate deceased belongs to family
-    const deceased = await FamilyMember.findOne({
-      _id: payload.deceasedId,
-      familyId: familyId,
-    });
-    if (!deceased) {
-      const error = new Error('Deceased must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
-  } else if (type === 'divorce') {
-    // Divorce requires husbandId and wifeId (already validated in divorce flow)
-    if (!payload.husbandId || !payload.wifeId) {
-      const error = new Error('Divorce registration requires husbandId and wifeId');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!witnesses[0]?.nationalId || !witnesses[1]?.nationalId) {
+    const error = new Error('Both witnesses must have National IDs');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate husband belongs to family
-    const husband = await FamilyMember.findOne({
-      _id: payload.husbandId,
-      familyId: familyId,
-    });
-    if (!husband) {
-      const error = new Error('Husband must belong to your family');
-      error.statusCode = 400;
-      throw error;
-    }
+  if (!sheikh || typeof sheikh !== 'object' || !sheikh.nationalId) {
+    const error = new Error('Sheikh information (nationalId) is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-    // Validate wife belongs to family
-    const wife = await FamilyMember.findOne({
-      _id: payload.wifeId,
-      familyId: familyId,
-    });
-    if (!wife) {
-      const error = new Error('Wife must belong to your family');
+  if (!meher || typeof meher !== 'object' || !meher.type || !meher.value) {
+    const error = new Error('Meher information (type, value) is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!['CASH', 'ASSET'].includes(meher.type)) {
+    const error = new Error('Meher type must be CASH or ASSET');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (meher.type === 'CASH' && !meher.currency) {
+    const error = new Error('Currency is required for CASH meher');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!marriageDetails || typeof marriageDetails !== 'object') {
+    const error = new Error('Marriage details are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!marriageDetails.date || !marriageDetails.district || !marriageDetails.sector) {
+    const error = new Error('Marriage details (date, district, sector) are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate documents array
+  if (documents && documents.length > 0) {
+    for (const doc of documents) {
+      if (!doc.fileName || !doc.filePath) {
+        const error = new Error('Invalid document metadata. fileName and filePath are required');
+        error.statusCode = 400;
+        throw error;
+      }
+    }
+  }
+
+  // Verify applicant via NIRA
+  let applicantSnapshot;
+  try {
+    const applicantData = await fetchPersonByNationalId(applicantNationalId.trim());
+    applicantSnapshot = {
+      nationalId: applicantData.nationalId,
+      fullName: applicantData.fullName,
+      dateOfBirth: applicantData.dateOfBirth,
+      gender: applicantData.gender,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify applicant: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Verify groom via NIRA
+  let groomSnapshot;
+  try {
+    const groomData = await fetchPersonByNationalId(groomNationalId.trim());
+    groomSnapshot = {
+      nationalId: groomData.nationalId,
+      fullName: groomData.fullName,
+      dateOfBirth: groomData.dateOfBirth,
+      gender: groomData.gender,
+      status: groomData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify groom: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate groom gender (must be MALE)
+  const groomGender = (groomSnapshot.gender || '').toUpperCase();
+  if (groomGender !== 'MALE') {
+    const error = new Error('Groom must be male according to Islamic law');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check groom's existing approved marriages (limit to 4)
+  const groomApprovedMarriages = await Application.countDocuments({
+    type: 'marriage',
+    status: 'approved',
+    'payload.marriage.groom.nationalId': groomNationalId.trim(),
+  });
+
+  if (groomApprovedMarriages >= 4) {
+    const error = new Error('Groom already has four wives. Islamic law does not permit more.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Verify bride via NIRA
+  let brideSnapshot;
+  try {
+    const brideData = await fetchPersonByNationalId(brideNationalId.trim());
+    brideSnapshot = {
+      nationalId: brideData.nationalId,
+      fullName: brideData.fullName,
+      dateOfBirth: brideData.dateOfBirth,
+      gender: brideData.gender,
+      status: brideData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify bride: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate bride gender (must be FEMALE)
+  const brideGender = (brideSnapshot.gender || '').toUpperCase();
+  if (brideGender !== 'FEMALE') {
+    const error = new Error('Bride must be female according to Islamic law');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if bride is already in an approved marriage (strictly monogamous)
+  const brideExistingMarriage = await Application.findOne({
+    type: 'marriage',
+    status: 'approved',
+    $or: [
+      { 'payload.marriage.bride.nationalId': brideNationalId.trim() },
+      { 'payload.marriage.groom.nationalId': brideNationalId.trim() }, // In case of data inconsistency
+    ],
+  }).lean();
+
+  if (brideExistingMarriage) {
+    const error = new Error('Bride is already married and cannot enter another marriage.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Verify wali via NIRA
+  let waliSnapshot;
+  try {
+    const waliData = await fetchPersonByNationalId(wali.nationalId.trim());
+    waliSnapshot = {
+      nationalId: waliData.nationalId,
+      fullName: waliData.fullName,
+      dateOfBirth: waliData.dateOfBirth,
+      gender: waliData.gender,
+      status: waliData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify wali: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate wali gender (must be MALE)
+  const waliGender = (waliSnapshot.gender || '').toUpperCase();
+  if (waliGender !== 'MALE') {
+    const error = new Error('Wali must be male according to Islamic law.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Validate wali relationship (allowed relationships)
+  const allowedRelationships = ['father', 'brother', 'uncle', 'grandfather', 'son'];
+  const waliRelationship = (wali.relationship || '').toLowerCase();
+  if (!allowedRelationships.includes(waliRelationship)) {
+    const error = new Error(`Invalid wali relationship. Allowed: ${allowedRelationships.join(', ')}`);
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Verify witnesses via NIRA
+  const witnessSnapshots = [];
+  const witnessNationalIds = new Set();
+  
+  for (let i = 0; i < witnesses.length; i++) {
+    const witness = witnesses[i];
+    try {
+      const witnessData = await fetchPersonByNationalId(witness.nationalId.trim());
+      const witnessSnapshot = {
+        nationalId: witnessData.nationalId,
+        fullName: witnessData.fullName,
+        dateOfBirth: witnessData.dateOfBirth,
+        gender: witnessData.gender,
+        status: witnessData.status,
+      };
+      witnessSnapshots.push(witnessSnapshot);
+      witnessNationalIds.add(witnessData.nationalId);
+    } catch (error) {
+      const niraError = new Error(`Failed to verify witness ${i + 1}: ${error.message}`);
+      niraError.statusCode = error.statusCode || 400;
+      throw niraError;
+    }
+  }
+
+  // Validate witnesses are all MALE
+  for (let i = 0; i < witnessSnapshots.length; i++) {
+    const witnessGender = (witnessSnapshots[i].gender || '').toUpperCase();
+    if (witnessGender !== 'MALE') {
+      const error = new Error('Marriage witnesses must be male.');
       error.statusCode = 400;
       throw error;
     }
   }
+
+  // Validate witnesses are not groom, bride, wali, or sheikh
+  const prohibitedIds = new Set([
+    groomNationalId.trim(),
+    brideNationalId.trim(),
+    wali.nationalId.trim(),
+    sheikh.nationalId.trim(),
+  ]);
+
+  for (const witnessId of witnessNationalIds) {
+    if (prohibitedIds.has(witnessId)) {
+      const error = new Error('Witnesses cannot be the groom, bride, wali, or sheikh');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  // Verify sheikh via NIRA
+  let sheikhSnapshot;
+  try {
+    const sheikhData = await fetchPersonByNationalId(sheikh.nationalId.trim());
+    sheikhSnapshot = {
+      nationalId: sheikhData.nationalId,
+      fullName: sheikhData.fullName,
+      dateOfBirth: sheikhData.dateOfBirth,
+      gender: sheikhData.gender,
+      status: sheikhData.status,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify sheikh: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate sheikh gender (must be MALE)
+  const sheikhGender = (sheikhSnapshot.gender || '').toUpperCase();
+  if (sheikhGender !== 'MALE') {
+    const error = new Error('Sheikh must be male according to Islamic law');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Create application payload with Marriage structure
+  const payload = {
+    marriage: {
+      applicant: {
+        nationalId: applicantNationalId.trim(),
+        snapshot: applicantSnapshot,
+      },
+      groom: {
+        nationalId: groomNationalId.trim(),
+        snapshot: groomSnapshot,
+      },
+      bride: {
+        nationalId: brideNationalId.trim(),
+        snapshot: brideSnapshot,
+      },
+      wali: {
+        nationalId: wali.nationalId.trim(),
+        relationship: wali.relationship.trim(),
+        snapshot: waliSnapshot,
+      },
+      witnesses: witnessSnapshots.map((snapshot) => ({
+        nationalId: snapshot.nationalId,
+        snapshot: snapshot,
+      })),
+      sheikh: {
+        nationalId: sheikh.nationalId.trim(),
+        snapshot: sheikhSnapshot,
+      },
+      meher: {
+        type: meher.type,
+        value: meher.value,
+        currency: meher.currency || null,
+        deferred: meher.deferred || false,
+      },
+      marriageDetails: {
+        date: marriageDetails.date,
+        district: marriageDetails.district.trim(),
+        sector: marriageDetails.sector.trim(),
+        place: marriageDetails.place || '',
+      },
+    },
+  };
+
+  // Create application with status 'pending'
+  const application = await Application.create({
+    userId,
+    applicationType: 'MARRIAGE',
+    type: 'marriage',
+    payload,
+    documents: documents && documents.length > 0 ? documents : [],
+    status: 'pending',
+  });
+
+  // Populate userId to return user info
+  await application.populate('userId', 'fullName email');
+
+  return application;
 };
 
 /**
@@ -237,7 +639,6 @@ export const getApplicationById = async (applicationId, userId) => {
 export const getPendingApplications = async () => {
   const applications = await Application.find({ status: 'pending' })
     .populate('userId', 'fullName email')
-    .populate('familyId', 'familyName')
     .sort({ createdAt: -1 }) // Newest first
     .lean();
 
@@ -258,7 +659,6 @@ export const getApplicationsByStatus = async (status) => {
 
   const applications = await Application.find({ status })
     .populate('userId', 'fullName email')
-    .populate('familyId', 'familyName')
     .populate('reviewedBy', 'fullName email')
     .sort({ createdAt: -1 }) // Newest first
     .lean();
@@ -273,9 +673,7 @@ export const getApplicationsByStatus = async (status) => {
  * @returns {Promise<Object>} Updated application
  */
 export const approveApplication = async (applicationId, adminId) => {
-  const application = await Application.findById(applicationId)
-    .populate('familyId')
-    .lean();
+  const application = await Application.findById(applicationId).lean();
 
   if (!application) {
     const error = new Error('Application not found');
@@ -289,33 +687,18 @@ export const approveApplication = async (applicationId, adminId) => {
     throw error;
   }
 
-  const { type, payload, familyId } = application;
-
-  // Validate familyId exists
-  if (!familyId) {
-    const error = new Error('Application does not have an associated family');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Get familyId as ObjectId (handle both populated and non-populated cases)
-  const familyIdObj = familyId._id || familyId;
-
-  if (!familyIdObj) {
-    const error = new Error('Invalid family ID in application');
-    error.statusCode = 400;
-    throw error;
-  }
+  const { type } = application;
 
   // Apply domain logic based on application type
   if (type === 'birth') {
-    await processBirthApproval(payload, familyIdObj, applicationId);
+    // Birth approval logic - certificate will be generated by user request only
+    // No automatic certificate creation - user must request it via Generate Certificate
+    // No FamilyMember creation needed in CRVS model
   } else if (type === 'marriage') {
-    await processMarriageApproval(payload, familyIdObj);
-  } else if (type === 'death') {
-    await processDeathApproval(payload, familyIdObj);
-  } else if (type === 'divorce') {
-    await processDivorceApproval(payload, familyIdObj);
+    // Marriage approval logic - certificate will be generated by user request only
+    // No automatic certificate creation - user must request it via Generate Certificate
+    // No FamilyMember creation needed in CRVS model
+    // Islamic validation already done during application creation
   }
 
   // Update application status to approved
@@ -332,13 +715,8 @@ export const approveApplication = async (applicationId, adminId) => {
     .populate('reviewedBy', 'fullName email')
     .lean();
 
-  // Create certificate for approved application
-  try {
-    await createCertificate(applicationId, adminId);
-  } catch (certError) {
-    // Log error but don't fail the approval
-    console.error('Error creating certificate:', certError);
-  }
+  // Certificate is NOT created automatically
+  // User must explicitly request certificate generation via POST /api/certificates/birth
 
   return updatedApplication;
 };
@@ -382,169 +760,3 @@ export const rejectApplication = async (applicationId, adminId, reason) => {
 
   return updatedApplication;
 };
-
-/**
- * Process birth approval - create child FamilyMember
- */
-const processBirthApproval = async (payload, familyId, applicationId) => {
-  const { child, fatherId, motherId } = payload;
-
-  if (!child || !fatherId || !motherId) {
-    const error = new Error('Invalid birth payload: missing required fields');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Parse child name (could be full name or first/last)
-  let firstName, lastName;
-  if (child.name) {
-    const nameParts = child.name.trim().split(/\s+/);
-    firstName = nameParts[0] || '';
-    lastName = nameParts.slice(1).join(' ') || nameParts[0] || '';
-  } else {
-    const error = new Error('Child name is required');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Normalize gender to lowercase (enum expects 'male' or 'female')
-  const normalizedGender = child.gender
-    ? child.gender.toString().toLowerCase()
-    : null;
-
-  // Validate gender is one of the allowed values
-  if (normalizedGender && !['male', 'female'].includes(normalizedGender)) {
-    const error = new Error(
-      `Invalid gender value: ${child.gender}. Must be 'male' or 'female'`,
-    );
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Create child FamilyMember
-  const childMember = await FamilyMember.create({
-    familyId: familyId,
-    firstName: firstName,
-    lastName: lastName,
-    gender: normalizedGender,
-    dateOfBirth: child.dateOfBirth ? new Date(child.dateOfBirth) : null,
-    placeOfBirth: child.placeOfBirth,
-    fatherId: fatherId,
-    motherId: motherId,
-    status: 'alive',
-    createdFromApplicationId: applicationId,
-  });
-
-  return childMember;
-};
-
-/**
- * Process marriage approval - update both members' marital status and spouseId
- */
-const processMarriageApproval = async (payload, familyId) => {
-  const { husbandId, wifeId } = payload;
-
-  if (!husbandId || !wifeId) {
-    const error = new Error('Invalid marriage payload: missing husbandId or wifeId');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Verify both members belong to the family
-  const husband = await FamilyMember.findOne({
-    _id: husbandId,
-    familyId: familyId,
-  });
-  const wife = await FamilyMember.findOne({
-    _id: wifeId,
-    familyId: familyId,
-  });
-
-  if (!husband || !wife) {
-    const error = new Error('Husband or wife not found in family');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Update both members
-  await FamilyMember.findByIdAndUpdate(husbandId, {
-    maritalStatus: 'married',
-    spouseId: wifeId,
-  });
-
-  await FamilyMember.findByIdAndUpdate(wifeId, {
-    maritalStatus: 'married',
-    spouseId: husbandId,
-  });
-};
-
-/**
- * Process death approval - update member status to deceased
- */
-const processDeathApproval = async (payload, familyId) => {
-  const { deceasedId } = payload;
-
-  if (!deceasedId) {
-    const error = new Error('Invalid death payload: missing deceasedId');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Verify member belongs to the family
-  const deceased = await FamilyMember.findOne({
-    _id: deceasedId,
-    familyId: familyId,
-  });
-
-  if (!deceased) {
-    const error = new Error('Deceased member not found in family');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Update member status to deceased
-  await FamilyMember.findByIdAndUpdate(deceasedId, {
-    status: 'deceased',
-  });
-};
-
-/**
- * Process divorce approval - update both members' marital status and clear spouseId
- */
-const processDivorceApproval = async (payload, familyId) => {
-  const { husbandId, wifeId } = payload;
-
-  if (!husbandId || !wifeId) {
-    const error = new Error('Invalid divorce payload: missing husbandId or wifeId');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Verify both members belong to the family
-  const husband = await FamilyMember.findOne({
-    _id: husbandId,
-    familyId: familyId,
-  });
-  const wife = await FamilyMember.findOne({
-    _id: wifeId,
-    familyId: familyId,
-  });
-
-  if (!husband || !wife) {
-    const error = new Error('Husband or wife not found in family');
-    error.statusCode = 400;
-    throw error;
-  }
-
-  // Update both members
-  await FamilyMember.findByIdAndUpdate(husbandId, {
-    maritalStatus: 'divorced',
-    spouseId: null,
-  });
-
-  await FamilyMember.findByIdAndUpdate(wifeId, {
-    maritalStatus: 'divorced',
-    spouseId: null,
-  });
-};
-

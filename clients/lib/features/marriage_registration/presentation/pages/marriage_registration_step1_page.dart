@@ -2,41 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:provider/provider.dart';
-import '../../../../features/applications/data/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
 import '../provider/marriage_form_provider.dart';
 
-/// Family Member Model for selection
-class FamilyMember {
-  final String id;
-  final String fullName;
-  final String? gender;
-  final DateTime? dateOfBirth;
-
-  FamilyMember({
-    required this.id,
-    required this.fullName,
-    this.gender,
-    this.dateOfBirth,
-  });
-
-  factory FamilyMember.fromJson(Map<String, dynamic> json) {
-    return FamilyMember(
-      id: json['id'] as String,
-      fullName: json['fullName'] as String? ?? 
-                '${json['firstName']} ${json['lastName']}',
-      gender: json['gender'] as String?,
-      dateOfBirth: json['dateOfBirth'] != null
-          ? DateTime.tryParse(json['dateOfBirth'].toString())
-          : null,
-    );
-  }
-
-  @override
-  String toString() => fullName;
-}
-
-/// Marriage Registration Step 1: Select Husband from Family Members
+/// Marriage Registration Step 1: Groom Details (using National ID)
 class MarriageRegistrationStep1Page extends StatefulWidget {
   const MarriageRegistrationStep1Page({super.key});
 
@@ -48,47 +17,12 @@ class MarriageRegistrationStep1Page extends StatefulWidget {
 class _MarriageRegistrationStep1PageState
     extends State<MarriageRegistrationStep1Page> {
   final _formKey = GlobalKey<FormBuilderState>();
-  List<FamilyMember> _familyMembers = [];
-  bool _isLoadingMembers = true;
-  String? _errorLoadingMembers;
+  final _groomIdController = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    _fetchFamilyMembers();
-  }
-
-  Future<void> _fetchFamilyMembers() async {
-    setState(() {
-      _isLoadingMembers = true;
-      _errorLoadingMembers = null;
-    });
-
-    final authProvider = context.read<AuthProvider>();
-    final applicationService = const ApplicationService();
-    final token = authProvider.token;
-
-    if (token == null || token.isEmpty) {
-      setState(() {
-        _errorLoadingMembers = 'Authentication token missing. Please log in.';
-        _isLoadingMembers = false;
-      });
-      return;
-    }
-
-    try {
-      final rawMembers = await applicationService.getFamilyMembers(token: token);
-      setState(() {
-        _familyMembers =
-            rawMembers.map((json) => FamilyMember.fromJson(json)).toList();
-        _isLoadingMembers = false;
-      });
-    } catch (e) {
-      setState(() {
-        _errorLoadingMembers = 'Failed to load family members: $e';
-        _isLoadingMembers = false;
-      });
-    }
+  void dispose() {
+    _groomIdController.dispose();
+    super.dispose();
   }
 
   @override
@@ -96,6 +30,13 @@ class _MarriageRegistrationStep1PageState
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final provider = Provider.of<MarriageFormProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    // Sync controller with provider value
+    if (provider.groomNationalId != null &&
+        _groomIdController.text != provider.groomNationalId) {
+      _groomIdController.text = provider.groomNationalId!;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -104,20 +45,20 @@ class _MarriageRegistrationStep1PageState
         children: [
           // Info Card
           Card(
-            color: Colors.pink.withOpacity(0.1),
+            color: Colors.blue.withOpacity(0.1),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
-              side: BorderSide(color: Colors.pink.withOpacity(0.3)),
+              side: BorderSide(color: Colors.blue.withOpacity(0.3)),
             ),
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.pink.shade700),
+                  Icon(Icons.info_outline, color: Colors.blue.shade700),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Please select the husband from your existing family members. He must already be registered in your family.',
+                      'Enter groom\'s National ID to verify identity via NIRA. Groom must be MALE.',
                       style: textTheme.bodyMedium,
                     ),
                   ),
@@ -129,12 +70,12 @@ class _MarriageRegistrationStep1PageState
 
           // Section Header
           Text(
-            'Husband Information',
+            'Groom Information',
             style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'Select husband from your family members',
+            'Groom details (must be male)',
             style: textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withOpacity(0.6),
             ),
@@ -149,53 +90,131 @@ class _MarriageRegistrationStep1PageState
                 key: _formKey,
                 child: Column(
                   children: [
-                    if (_isLoadingMembers)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_errorLoadingMembers != null)
-                      Text(
-                        _errorLoadingMembers!,
-                        style: textTheme.bodyMedium?.copyWith(color: Colors.red),
-                      )
-                    else if (_familyMembers.isEmpty)
-                      Text(
-                        'No family members found. Please add family members first before registering a marriage.',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      )
-                    else
-                      FormBuilderDropdown<FamilyMember>(
-                        name: 'husband',
-                        initialValue: provider.husbandId != null
-                            ? _familyMembers.firstWhere(
-                                (m) => m.id == provider.husbandId,
-                                orElse: () => _familyMembers.first,
+                    FormBuilderTextField(
+                      name: 'groomNationalId',
+                      controller: _groomIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Groom National ID *',
+                        hintText: 'Enter groom\'s National ID',
+                        prefixIcon: const Icon(Icons.badge),
+                        suffixIcon: provider.isLoadingGroom
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
                               )
-                            : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Husband *',
-                          hintText: 'Select husband',
-                          prefixIcon: Icon(Icons.person),
-                        ),
-                        validator: FormBuilderValidators.required(),
-                        items: _familyMembers
-                            .where((m) => m.gender == 'male' || m.gender == null)
-                            .map(
-                              (member) => DropdownMenuItem(
-                                value: member,
-                                child: Text(member.fullName),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            provider.updateHusbandId(value.id, value.fullName);
-                          }
-                        },
+                            : provider.groomIdentity != null
+                                ? Icon(Icons.check_circle, color: Colors.green)
+                                : null,
                       ),
+                      validator: FormBuilderValidators.compose([
+                        FormBuilderValidators.required(),
+                      ]),
+                      onChanged: (value) {
+                        provider.updateGroomNationalId(value);
+                        if (value != null && value.length >= 9) {
+                          final token = authProvider.token;
+                          if (token != null && token.isNotEmpty) {
+                            provider.fetchGroomIdentity(token);
+                          }
+                        }
+                      },
+                    ),
+                    if (provider.groomError != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                provider.groomError!,
+                                style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (provider.groomIdentity != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceVariant.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Verified Identity (Read-only)',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildReadOnlyField(
+                              context,
+                              'Full Name',
+                              provider.groomIdentity!.fullName,
+                            ),
+                            if (provider.groomIdentity!.dateOfBirth != null)
+                              _buildReadOnlyField(
+                                context,
+                                'Date of Birth',
+                                provider.groomIdentity!.dateOfBirth!,
+                              ),
+                            if (provider.groomIdentity!.gender != null)
+                              _buildReadOnlyField(
+                                context,
+                                'Gender',
+                                provider.groomIdentity!.gender!.toUpperCase(),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(BuildContext context, String label, String value) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: textTheme.bodyMedium,
             ),
           ),
         ],

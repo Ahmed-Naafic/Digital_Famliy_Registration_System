@@ -1,8 +1,6 @@
 import User from '../models/User.model.js';
-import Family from '../models/Family.model.js';
 import Application from '../models/Application.model.js';
 import Certificate from '../models/Certificate.model.js';
-import FamilyMember from '../models/FamilyMember.model.js';
 import ServiceConfig from '../models/ServiceConfig.model.js';
 
 /**
@@ -14,9 +12,6 @@ export const getAdminStatistics = async () => {
     // Count total citizens (users with role 'citizen')
     const totalCitizens = await User.countDocuments({ role: 'citizen', status: 'active' });
 
-    // Count total families (active families)
-    const totalFamilies = await Family.countDocuments({ status: 'active' });
-
     // Count applications by status
     const pendingApplications = await Application.countDocuments({ status: 'pending' });
     const approvedApplications = await Application.countDocuments({ status: 'approved' });
@@ -27,7 +22,7 @@ export const getAdminStatistics = async () => {
 
     return {
       totalCitizens,
-      totalFamilies,
+      totalFamilies: 0, // CRVS model: no families
       pendingApplications,
       approvedApplications,
       rejectedApplications,
@@ -69,30 +64,15 @@ export const getAllCitizens = async (options = {}) => {
       User.countDocuments(query),
     ]);
 
-    // Get family info for each citizen
-    const citizensWithFamily = await Promise.all(
-      citizens.map(async (citizen) => {
-        const family = await Family.findOne({
-          linkedUsers: citizen._id,
-          status: 'active',
-        }).lean();
-
-        const familyMembersCount = family
-          ? await FamilyMember.countDocuments({ familyId: family._id })
-          : 0;
-
-        return {
-          ...citizen,
-          hasFamily: !!family,
-          familyId: family?._id?.toString(),
-          familyName: family?.familyName,
-          familyMembersCount,
-        };
-      }),
-    );
-
+    // CRVS model: no family info
     return {
-      citizens: citizensWithFamily,
+      citizens: citizens.map((citizen) => ({
+        ...citizen,
+        hasFamily: false,
+        familyId: null,
+        familyName: null,
+        familyMembersCount: 0,
+      })),
       total,
       page,
       limit,
@@ -171,138 +151,24 @@ export const updateServiceStatus = async (serviceType, enabled) => {
 
 /**
  * Get all families with pagination and search
- * @param {Object} options - Pagination and search options
- * @param {number} options.page - Current page number
- * @param {number} options.limit - Number of items per page
- * @param {string} options.search - Search query for familyName or familyNumber
- * @returns {Promise<Object>} Paginated list of families
+ * CRVS model: Families not supported - returns empty
  */
 export const getAllFamilies = async (options = {}) => {
-  try {
-    const { page = 1, limit = 50, search = '' } = options;
-    const skip = (page - 1) * limit;
-
-    // Build query
-    const query = { status: 'active' };
-
-    if (search && search.trim()) {
-      query.$or = [
-        { familyName: { $regex: search.trim(), $options: 'i' } },
-        { familyNumber: { $regex: search.trim(), $options: 'i' } },
-      ];
-    }
-
-    // Get families with pagination
-    const [families, total] = await Promise.all([
-      Family.find(query)
-        .populate('linkedUsers', 'fullName email')
-        .populate('headOfFamilyId', 'firstName lastName')
-        .sort({ createdAt: -1 })
-        .skip(skip)
-        .limit(limit)
-        .lean(),
-      Family.countDocuments(query),
-    ]);
-
-    // Get member count and linked users info for each family
-    const familiesWithDetails = await Promise.all(
-      families.map(async (family) => {
-        const memberCount = await FamilyMember.countDocuments({
-          familyId: family._id,
-        });
-
-        const linkedUsersInfo = family.linkedUsers
-          ? family.linkedUsers.map((user) => ({
-              id: user._id?.toString(),
-              name: user.fullName,
-              email: user.email,
-            }))
-          : [];
-
-        return {
-          _id: family._id?.toString(),
-          familyName: family.familyName,
-          familyNumber: family.familyNumber,
-          address: family.address,
-          status: family.status,
-          memberCount: memberCount,
-          linkedUsersCount: linkedUsersInfo.length,
-          linkedUsers: linkedUsersInfo,
-          headOfFamily: family.headOfFamilyId
-            ? {
-                id: family.headOfFamilyId._id?.toString(),
-                name: `${family.headOfFamilyId.firstName} ${family.headOfFamilyId.lastName}`,
-              }
-            : null,
-          createdAt: family.createdAt,
-          updatedAt: family.updatedAt,
-        };
-      }),
-    );
-
-    return {
-      families: familiesWithDetails,
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-    };
-  } catch (error) {
-    throw error;
-  }
+  return {
+    families: [],
+    total: 0,
+    page: 1,
+    limit: 50,
+    totalPages: 0,
+  };
 };
 
 /**
  * Get family members by family ID (admin only)
- * @param {string} familyId - Family ID
- * @returns {Promise<Array>} List of family members
+ * CRVS model: Family members not supported - returns empty
  */
 export const getFamilyMembersByFamilyId = async (familyId) => {
-  try {
-    const family = await Family.findById(familyId).lean();
-
-    if (!family) {
-      const error = new Error('Family not found');
-      error.statusCode = 404;
-      throw error;
-    }
-
-    const members = await FamilyMember.find({ familyId })
-      .populate('fatherId', 'firstName lastName')
-      .populate('motherId', 'firstName lastName')
-      .populate('spouseId', 'firstName lastName')
-      .sort({ createdAt: -1 })
-      .lean();
-
-    return members.map((member) => ({
-      id: member._id.toString(),
-      firstName: member.firstName,
-      lastName: member.lastName,
-      fullName: `${member.firstName} ${member.lastName}`,
-      gender: member.gender,
-      dateOfBirth: member.dateOfBirth,
-      placeOfBirth: member.placeOfBirth,
-      nationalIdNumber: member.nationalIdNumber,
-      maritalStatus: member.maritalStatus,
-      status: member.status,
-      fatherId: member.fatherId?._id?.toString(),
-      fatherName: member.fatherId
-        ? `${member.fatherId.firstName} ${member.fatherId.lastName}`
-        : null,
-      motherId: member.motherId?._id?.toString(),
-      motherName: member.motherId
-        ? `${member.motherId.firstName} ${member.motherId.lastName}`
-        : null,
-      spouseId: member.spouseId?._id?.toString(),
-      spouseName: member.spouseId
-        ? `${member.spouseId.firstName} ${member.spouseId.lastName}`
-        : null,
-      createdAt: member.createdAt,
-      updatedAt: member.updatedAt,
-    }));
-  } catch (error) {
-    throw error;
-  }
+  return [];
 };
 
 /**

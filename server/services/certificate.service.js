@@ -1,7 +1,12 @@
 import Certificate from '../models/Certificate.model.js';
 import Application from '../models/Application.model.js';
-import FamilyMember from '../models/FamilyMember.model.js';
-import Family from '../models/Family.model.js';
+import { generateCertificatePDF } from './pdf.service.js';
+import fs from 'fs/promises';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 /**
  * Generate a unique certificate number
@@ -29,7 +34,6 @@ const generateCertificateNumber = (type) => {
 export const createCertificate = async (applicationId, adminId) => {
   const application = await Application.findById(applicationId)
     .populate('userId', 'fullName email')
-    .populate('familyId')
     .lean();
 
   if (!application) {
@@ -50,46 +54,14 @@ export const createCertificate = async (applicationId, adminId) => {
     return existingCertificate;
   }
 
-  const { type, payload, userId, familyId } = application;
+  const { type } = application;
 
-  // Extract member IDs based on application type
-  let issuedTo = [];
-  if (type === 'birth' && payload.child) {
-    // For birth, find the child member created from this application
-    const childMember = await FamilyMember.findOne({
-      createdFromApplicationId: applicationId,
-    });
-    if (childMember) {
-      issuedTo = [childMember._id];
-    }
-  } else if (type === 'marriage' && payload.husbandId && payload.wifeId) {
-    // For marriage, both spouses
-    const husband = await FamilyMember.findById(payload.husbandId);
-    const wife = await FamilyMember.findById(payload.wifeId);
-    if (husband && wife) {
-      issuedTo = [husband._id, wife._id];
-    }
-  } else if (type === 'divorce' && payload.husbandId && payload.wifeId) {
-    // For divorce, both parties
-    const husband = await FamilyMember.findById(payload.husbandId);
-    const wife = await FamilyMember.findById(payload.wifeId);
-    if (husband && wife) {
-      issuedTo = [husband._id, wife._id];
-    }
-  } else if (type === 'death' && payload.deceasedId) {
-    // For death, the deceased member
-    const deceased = await FamilyMember.findById(payload.deceasedId);
-    if (deceased) {
-      issuedTo = [deceased._id];
-    }
-  }
-
-  // Create certificate
+  // Create certificate (CRVS model - no FamilyMember references)
   const certificate = await Certificate.create({
     applicationId,
     certificateNumber: generateCertificateNumber(type),
     type,
-    issuedTo,
+    issuedTo: [], // Empty in CRVS model - certificates are linked to applications only
     issueDate: new Date(),
     issuedBy: adminId,
     status: 'valid',
@@ -109,32 +81,14 @@ export const createCertificate = async (applicationId, adminId) => {
  * @returns {Promise<Array>} List of certificates
  */
 export const getCertificatesForCitizen = async (userId) => {
-  // Find user's family
-  const family = await Family.findOne({
-    linkedUsers: userId,
-    status: 'active',
-  });
-
-  if (!family) {
-    return [];
-  }
-
-  // Get all family members
-  const familyMembers = await FamilyMember.find({ familyId: family._id }).lean();
-  const memberIds = familyMembers.map((m) => m._id);
-
   // Get all applications submitted by this user
   const userApplications = await Application.find({ userId }).select('_id').lean();
   const userApplicationIds = userApplications.map((app) => app._id.toString());
 
-  // Find certificates:
-  // 1. Issued to any of the user's family members, OR
-  // 2. For applications submitted by this user
+  // Find certificates for applications submitted by this user (CRVS model)
   const certificates = await Certificate.find({
-    $or: [
-      { issuedTo: { $in: memberIds }, status: 'valid' },
-      { applicationId: { $in: userApplicationIds }, status: 'valid' },
-    ],
+    applicationId: { $in: userApplicationIds },
+    status: 'valid',
   })
     .populate('applicationId', 'type payload userId')
     .populate('issuedBy', 'fullName')
@@ -158,72 +112,34 @@ export const getCertificatesForCitizen = async (userId) => {
       // Build type-specific details
       let details = {};
 
-      if (type === 'birth' && payload.child) {
-        // Get child member created from this application
-        const childMember = await FamilyMember.findOne({
-          createdFromApplicationId: application._id,
-        })
-          .populate('fatherId', 'firstName lastName')
-          .populate('motherId', 'firstName lastName')
-          .lean();
+      if (type === 'birth' && payload.birth?.child) {
+        // CRVS model: use payload data directly (no FamilyMember)
+        const childData = payload.birth.child;
+        const childName = childData.name || 'Unknown';
 
-        // Use childMember data if available, otherwise fall back to payload
-        const childName = childMember
-          ? `${childMember.firstName} ${childMember.lastName}`
-          : payload.child.name || 'Unknown';
-
-        // Date of Birth: prefer childMember, fallback to payload
+        // Date of Birth
         let dateOfBirthStr = null;
-        if (childMember?.dateOfBirth) {
-          dateOfBirthStr = childMember.dateOfBirth instanceof Date
-            ? childMember.dateOfBirth.toISOString()
-            : new Date(childMember.dateOfBirth).toISOString();
-        } else if (payload.child.dateOfBirth) {
-          dateOfBirthStr = payload.child.dateOfBirth instanceof Date
-            ? payload.child.dateOfBirth.toISOString()
-            : new Date(payload.child.dateOfBirth).toISOString();
+        if (childData.dateOfBirth) {
+          dateOfBirthStr = childData.dateOfBirth instanceof Date
+            ? childData.dateOfBirth.toISOString()
+            : new Date(childData.dateOfBirth).toISOString();
         }
 
-        // Place of Birth: prefer childMember, fallback to payload
-        const placeOfBirth = childMember?.placeOfBirth || payload.child.placeOfBirth || '';
+        // Place of Birth
+        const placeOfBirth = childData.placeOfBirth || '';
 
-        // Gender: prefer childMember, fallback to payload (normalize to lowercase)
+        // Gender (normalize to lowercase)
         let gender = '';
-        if (childMember?.gender) {
-          gender = childMember.gender;
-        } else if (payload.child.gender) {
-          gender = payload.child.gender.toString().toLowerCase();
+        if (childData.gender) {
+          gender = childData.gender.toString().toLowerCase();
         }
 
-        // Nationality: always 'Somalia' for birth certificates
-        const nationality = 'Somalia';
+        // Nationality
+        const nationality = childData.nationality || 'Somalia';
 
-        // Parent names: prefer populated childMember, fallback to payload
-        let fatherName = 'Unknown';
-        if (childMember?.fatherId) {
-          fatherName = `${childMember.fatherId.firstName} ${childMember.fatherId.lastName}`;
-        } else if (payload.fatherName) {
-          fatherName = payload.fatherName;
-        } else if (payload.fatherId) {
-          // Try to fetch father if we have the ID
-          const father = await FamilyMember.findById(payload.fatherId).lean();
-          if (father) {
-            fatherName = `${father.firstName} ${father.lastName}`;
-          }
-        }
-
-        let motherName = 'Unknown';
-        if (childMember?.motherId) {
-          motherName = `${childMember.motherId.firstName} ${childMember.motherId.lastName}`;
-        } else if (payload.motherName) {
-          motherName = payload.motherName;
-        } else if (payload.motherId) {
-          // Try to fetch mother if we have the ID
-          const mother = await FamilyMember.findById(payload.motherId).lean();
-          if (mother) {
-            motherName = `${mother.firstName} ${mother.lastName}`;
-          }
-        }
+        // Parent names from snapshots (verified via NIRA)
+        const fatherName = payload.birth.fatherSnapshot?.fullName || 'Unknown';
+        const motherName = payload.birth.motherSnapshot?.fullName || 'Unknown';
 
         details = {
           citizenName: childName,
@@ -234,13 +150,14 @@ export const getCertificatesForCitizen = async (userId) => {
           nationality: nationality,
           fatherName: fatherName,
           motherName: motherName,
-          weight: payload.child?.weight,
-          height: payload.child?.height,
+          weight: childData.weight,
+          height: childData.height,
         };
       } else if (type === 'marriage') {
-        const husband = await FamilyMember.findById(payload.husbandId)
-          .lean();
-        const wife = await FamilyMember.findById(payload.wifeId).lean();
+        // CRVS model: use payload.marriage data directly
+        const marriageData = payload.marriage || {};
+        const groomName = marriageData.groom?.snapshot?.fullName || 'Unknown';
+        const brideName = marriageData.bride?.snapshot?.fullName || 'Unknown';
 
         // Ensure dateOfMarriage is converted to string
         let dateOfMarriageStr = application?.createdAt
@@ -248,29 +165,23 @@ export const getCertificatesForCitizen = async (userId) => {
               ? application.createdAt.toISOString()
               : new Date(application.createdAt).toISOString())
           : new Date().toISOString();
-        if (payload.dateOfMarriage) {
-          dateOfMarriageStr = payload.dateOfMarriage instanceof Date
-            ? payload.dateOfMarriage.toISOString()
-            : new Date(payload.dateOfMarriage).toISOString();
+        if (marriageData.marriageDetails?.date) {
+          dateOfMarriageStr = marriageData.marriageDetails.date instanceof Date
+            ? marriageData.marriageDetails.date.toISOString()
+            : new Date(marriageData.marriageDetails.date).toISOString();
         }
 
-        const husbandName = husband
-          ? `${husband.firstName} ${husband.lastName}`
-          : payload.husbandName || 'Unknown';
-        const wifeName = wife
-          ? `${wife.firstName} ${wife.lastName}`
-          : payload.wifeName || 'Unknown';
-
         details = {
-          citizenName: `${husbandName} & ${wifeName}`,
-          husbandName: husbandName,
-          wifeName: wifeName,
+          citizenName: `${groomName} & ${brideName}`,
+          husbandName: groomName,
+          wifeName: brideName,
           dateOfMarriage: dateOfMarriageStr,
-          placeOfMarriage: payload.placeOfMarriage || '',
-          marriageType: payload.marriageType || 'Civil',
+          placeOfMarriage: marriageData.marriageDetails?.place || '',
+          marriageType: 'Islamic',
         };
       } else if (type === 'death') {
-        const deceased = await FamilyMember.findById(payload.deceasedId).lean();
+        // CRVS model: death not supported yet
+        details = {};
 
         // Ensure dates are converted to strings
         let dateOfBirthStr = null;
@@ -309,9 +220,8 @@ export const getCertificatesForCitizen = async (userId) => {
           causeOfDeath: payload.causeOfDeath,
         };
       } else if (type === 'divorce') {
-        const husband = await FamilyMember.findById(payload.husbandId)
-          .lean();
-        const wife = await FamilyMember.findById(payload.wifeId).lean();
+        // CRVS model: divorce not supported yet
+        details = {};
 
         // Ensure divorceDate is converted to string
         let divorceDateStr = application?.createdAt
@@ -431,16 +341,346 @@ export const getAllCertificates = async (options = {}) => {
  * @returns {Promise<Object>} Certificate data
  */
 export const getCertificateForDownload = async (certificateId, userId) => {
-  // Get user's certificates to verify access
-  const certificates = await getCertificatesForCitizen(userId);
-  const certificate = certificates.find((cert) => cert.id === certificateId);
+  // Convert userId to string for consistent comparison
+  const userIdStr = userId?.toString();
+
+  // Find certificate directly and verify ownership through application
+  const certificate = await Certificate.findById(certificateId)
+    .populate('applicationId', 'userId type payload')
+    .lean();
 
   if (!certificate) {
-    const error = new Error('Certificate not found or access denied');
+    const error = new Error('Certificate not found');
     error.statusCode = 404;
     throw error;
   }
 
-  return certificate;
+  // Verify ownership through application
+  const application = certificate.applicationId;
+  if (!application) {
+    const error = new Error('Certificate has no associated application');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if application belongs to user
+  let applicationUserId;
+  if (application.userId && typeof application.userId === 'object' && application.userId._id) {
+    applicationUserId = application.userId._id.toString();
+  } else if (application.userId) {
+    applicationUserId = application.userId.toString();
+  } else {
+    const error = new Error('Application has no associated user');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (applicationUserId !== userIdStr) {
+    const error = new Error('Access denied: Certificate does not belong to you');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Build certificate data for PDF generation using existing certificate
+  const payload = application.payload || {};
+  const birthData = payload.birth || {};
+  const childData = birthData.child || {};
+
+  const details = {
+    citizenName: childData.name || 'Unknown',
+    childName: childData.name || 'Unknown',
+    dateOfBirth: childData.dateOfBirth ? (childData.dateOfBirth instanceof Date ? childData.dateOfBirth.toISOString() : new Date(childData.dateOfBirth).toISOString()) : null,
+    placeOfBirth: childData.placeOfBirth || '',
+    gender: childData.gender || '',
+    nationality: childData.nationality || 'Somalia',
+    fatherName: birthData.fatherSnapshot?.fullName || 'Unknown',
+    motherName: birthData.motherSnapshot?.fullName || 'Unknown',
+    fatherDistrict: birthData.fatherResidence?.district || '',
+    fatherSector: birthData.fatherResidence?.sector || '',
+    motherDistrict: birthData.motherResidence?.district || '',
+    motherSector: birthData.motherResidence?.sector || '',
+  };
+
+  return {
+    type: certificate.type || 'birth',
+    certificateNumber: certificate.certificateNumber,
+    details,
+    issueDate: certificate.issueDate || new Date(),
+    issuedBy: 'System (Auto-issued)',
+  };
 };
+
+/**
+ * Generate Birth Certificate from approved Birth application
+ * Auto-issues certificate without admin approval
+ * @param {string} applicationId - Application ID
+ * @param {string} userId - User ID requesting the certificate
+ * @returns {Promise<Object>} Certificate info with download URL
+ */
+export const generateBirthCertificate = async (applicationId, userId) => {
+  // Convert userId to string for consistent comparison
+  const userIdStr = userId?.toString();
+
+  // Find the application
+  const application = await Application.findById(applicationId)
+    .populate('userId', 'fullName email')
+    .lean();
+
+  if (!application) {
+    const error = new Error('Application not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Verify application belongs to user
+  // Handle both populated and non-populated userId
+  let applicationUserId;
+  if (application.userId && typeof application.userId === 'object' && application.userId._id) {
+    // userId is populated (object with _id)
+    applicationUserId = application.userId._id.toString();
+  } else if (application.userId) {
+    // userId is not populated (just ObjectId)
+    applicationUserId = application.userId.toString();
+  } else {
+    const error = new Error('Application has no associated user');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Compare user IDs (both as strings)
+  if (applicationUserId !== userIdStr) {
+    console.error('User ID mismatch:', {
+      applicationUserId,
+      userIdStr,
+      applicationId: applicationId.toString(),
+    });
+    const error = new Error('Access denied: Application does not belong to you');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Validate application type and status
+  if (application.applicationType !== 'BIRTH' && application.type !== 'birth') {
+    const error = new Error('Application is not a Birth application');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (application.status !== 'approved') {
+    const error = new Error('Application must be approved before generating certificate');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Check if certificate already exists
+  let certificate = await Certificate.findOne({ applicationId }).lean();
+
+  if (certificate) {
+    // Certificate already exists, return it
+    return {
+      certificateId: certificate._id.toString(),
+      certificateNumber: certificate.certificateNumber,
+      filePath: certificate.filePath,
+      downloadUrl: `/api/certificates/${certificate._id}/download`,
+      issueDate: certificate.issueDate instanceof Date
+        ? certificate.issueDate.toISOString()
+        : new Date(certificate.issueDate).toISOString(),
+    };
+  }
+
+  // Build certificate data for PDF generation
+  const certificateData = await buildCertificateDataForApplication(application);
+
+  // Generate PDF
+  const pdfBuffer = await generateCertificatePDF(certificateData);
+
+  // Ensure certificates directory exists
+  const certificatesDir = path.join(__dirname, '../uploads/certificates');
+  await fs.mkdir(certificatesDir, { recursive: true });
+
+  // Save PDF file
+  const fileName = `birth_${certificateData.certificateNumber}_${Date.now()}.pdf`;
+  const filePath = path.join(certificatesDir, fileName);
+  await fs.writeFile(filePath, pdfBuffer);
+
+  // Create certificate record
+  certificate = await Certificate.create({
+    applicationId,
+    certificateNumber: certificateData.certificateNumber,
+    type: 'birth',
+    issuedTo: [],
+    issueDate: new Date(),
+    issuedBy: null, // Auto-issued, no admin
+    filePath: `/uploads/certificates/${fileName}`,
+    status: 'valid',
+  });
+
+  // Link certificate to application
+  await Application.findByIdAndUpdate(applicationId, {
+    certificateId: certificate._id,
+  });
+
+  return {
+    certificateId: certificate._id.toString(),
+    certificateNumber: certificate.certificateNumber,
+    filePath: certificate.filePath,
+    downloadUrl: `/api/certificates/${certificate._id}/download`,
+    issueDate: certificate.issueDate instanceof Date
+      ? certificate.issueDate.toISOString()
+      : new Date(certificate.issueDate).toISOString(),
+  };
+};
+
+/**
+ * Get certificate by application ID
+ * @param {string} applicationId - Application ID
+ * @param {string} userId - User ID (for access verification)
+ * @returns {Promise<Object|null>} Certificate info or null if not found
+ */
+export const getCertificateByApplicationId = async (applicationId, userId) => {
+  // Convert userId to string for consistent comparison
+  const userIdStr = userId?.toString();
+
+  // Find application first to verify ownership
+  const application = await Application.findById(applicationId)
+    .populate('userId', 'fullName email')
+    .lean();
+
+  if (!application) {
+    const error = new Error('Application not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // Verify application belongs to user
+  let applicationUserId;
+  if (application.userId && typeof application.userId === 'object' && application.userId._id) {
+    applicationUserId = application.userId._id.toString();
+  } else if (application.userId) {
+    applicationUserId = application.userId.toString();
+  } else {
+    const error = new Error('Application has no associated user');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (applicationUserId !== userIdStr) {
+    const error = new Error('Access denied: Application does not belong to you');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Find certificate for this application
+  const certificate = await Certificate.findOne({ applicationId }).lean();
+
+  if (!certificate) {
+    return null; // No certificate found
+  }
+
+  return {
+    certificateId: certificate._id.toString(),
+    applicationId: applicationId.toString(),
+    certificateNumber: certificate.certificateNumber,
+    filePath: certificate.filePath,
+    downloadUrl: `/api/certificates/${certificate._id}/download`,
+    issueDate: certificate.issueDate instanceof Date
+      ? certificate.issueDate.toISOString()
+      : new Date(certificate.issueDate).toISOString(),
+    type: certificate.type,
+    status: certificate.status,
+  };
+};
+
+/**
+ * Build certificate data structure for PDF generation from application
+ * @param {Object} application - Application document
+ * @returns {Promise<Object>} Certificate data
+ */
+async function buildCertificateDataForApplication(application) {
+  const payload = application.payload || {};
+  const birthData = payload.birth || {};
+
+  // Build birth certificate details
+  const childData = birthData.child || {};
+  const childName = childData.name || 'Unknown';
+
+  // Date of Birth
+  let dateOfBirthStr = null;
+  if (childData.dateOfBirth) {
+    dateOfBirthStr = childData.dateOfBirth instanceof Date
+      ? childData.dateOfBirth.toISOString()
+      : new Date(childData.dateOfBirth).toISOString();
+  }
+
+  // Parent names from snapshots (verified via NIRA)
+  const fatherName = birthData.fatherSnapshot?.fullName || 'Unknown';
+  const motherName = birthData.motherSnapshot?.fullName || 'Unknown';
+
+  // Residence information
+  const fatherDistrict = birthData.fatherResidence?.district || '';
+  const fatherSector = birthData.fatherResidence?.sector || '';
+  const motherDistrict = birthData.motherResidence?.district || '';
+  const motherSector = birthData.motherResidence?.sector || '';
+
+  const details = {
+    citizenName: childName,
+    childName: childName,
+    dateOfBirth: dateOfBirthStr,
+    placeOfBirth: childData.placeOfBirth || '',
+    gender: childData.gender || '',
+    nationality: childData.nationality || 'Somalia',
+    fatherName: fatherName,
+    motherName: motherName,
+    fatherDistrict: fatherDistrict,
+    fatherSector: fatherSector,
+    motherDistrict: motherDistrict,
+    motherSector: motherSector,
+  };
+
+  // Generate certificate number
+  const certificateNumber = generateCertificateNumber('birth');
+
+  return {
+    type: 'birth',
+    certificateNumber,
+    details,
+    issueDate: new Date(),
+    issuedBy: 'System (Auto-issued)',
+  };
+}
+
+/**
+ * Build certificate data from existing certificate
+ * @param {Object} cert - Certificate document
+ * @param {Object} application - Application document
+ * @returns {Promise<Object>} Certificate data
+ */
+async function buildCertificateData(cert, application) {
+  const payload = application.payload || {};
+  const birthData = payload.birth || {};
+  const childData = birthData.child || {};
+
+  const details = {
+    citizenName: childData.name || 'Unknown',
+    childName: childData.name || 'Unknown',
+    dateOfBirth: childData.dateOfBirth ? (childData.dateOfBirth instanceof Date ? childData.dateOfBirth.toISOString() : new Date(childData.dateOfBirth).toISOString()) : null,
+    placeOfBirth: childData.placeOfBirth || '',
+    gender: childData.gender || '',
+    nationality: childData.nationality || 'Somalia',
+    fatherName: birthData.fatherSnapshot?.fullName || 'Unknown',
+    motherName: birthData.motherSnapshot?.fullName || 'Unknown',
+    fatherDistrict: birthData.fatherResidence?.district || '',
+    fatherSector: birthData.fatherResidence?.sector || '',
+    motherDistrict: birthData.motherResidence?.district || '',
+    motherSector: birthData.motherResidence?.sector || '',
+  };
+
+  return {
+    type: 'birth',
+    certificateNumber: cert.certificateNumber,
+    details,
+    issueDate: cert.issueDate || new Date(),
+    issuedBy: 'System (Auto-issued)',
+  };
+}
 

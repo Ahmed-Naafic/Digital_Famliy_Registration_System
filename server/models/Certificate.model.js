@@ -25,7 +25,7 @@ const certificateSchema = new Schema(
     issuedTo: [
       {
         type: Schema.Types.ObjectId,
-        ref: 'FamilyMember',
+        // CRVS model: no FamilyMember reference
       },
     ],
     issueDate: {

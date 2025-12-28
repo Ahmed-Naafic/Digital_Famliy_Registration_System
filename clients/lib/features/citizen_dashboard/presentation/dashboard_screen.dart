@@ -12,7 +12,6 @@ import '../../../../features/applications/providers/application_provider.dart';
 import '../../../../features/applications/data/application_service.dart'
     as api_service;
 import '../../auth/auth_provider.dart';
-import '../../family/providers/family_provider.dart';
 import 'widgets/sidebar_widget.dart';
 import 'widgets/quick_action_card.dart';
 import 'widgets/certificate_card.dart';
@@ -204,10 +203,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 children: [
                   QuickActionCard(
                     icon: Icons.child_care,
-                    title: 'Birth Registration',
+                    title: 'Birth Services',
                     backgroundColor: kPrimaryColor,
                     onTap: _enabledServices.contains('birth')
-                        ? () => context.goNamed(Routes.birthRegistration)
+                        ? () => context.goNamed(Routes.birthServiceSelector)
                         : null,
                     isDisabled: _disabledServices.contains('birth'),
                     disabledMessage: 'Disabled by Admin',
@@ -247,12 +246,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     title: 'View Certificates',
                     backgroundColor: kAccentColor,
                     onTap: () => context.goNamed(Routes.certificates),
-                  ),
-                  QuickActionCard(
-                    icon: Icons.people,
-                    title: 'Family Profile',
-                    backgroundColor: Colors.teal,
-                    onTap: () => context.goNamed(Routes.familyProfile),
                   ),
                 ],
               ),
@@ -395,10 +388,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
       {
         'type': 'birth',
         'icon': Icons.child_care,
-        'title': 'Birth Registration',
-        'description': 'Register a new birth and obtain birth certificate',
+        'title': 'Birth Services',
+        'description': 'Register birth or generate certificate',
         'color': kPrimaryColor,
-        'onTap': () => context.goNamed(Routes.birthRegistration),
+        'onTap': () => context.goNamed(Routes.birthServiceSelector),
       },
       {
         'type': 'marriage',
@@ -449,13 +442,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         'description': 'Track the status of your submitted applications',
         'color': Colors.orange,
         'onTap': () => context.goNamed(Routes.applicationStatus),
-      },
-      {
-        'icon': Icons.people,
-        'title': 'Family Profile',
-        'description': 'Manage your family members and relationships',
-        'color': Colors.teal,
-        'onTap': () => context.goNamed(Routes.familyProfile),
       },
     ];
 
@@ -684,12 +670,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               child: ElevatedButton.icon(
                 onPressed: () {
                   authProvider.logout();
-                  // Clear family state on logout
-                  final familyProvider = Provider.of<FamilyProvider>(
-                    context,
-                    listen: false,
-                  );
-                  familyProvider.reset();
+                  // CRVS model: No family state to clear
                   context.goNamed(Routes.login);
                   _showSnackBar(
                     context,
@@ -1064,7 +1045,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         title: Text(
           _showCertificates
               ? 'Certificates'
-              : ['Home', 'Services', 'Family', 'Profile'][_currentIndex],
+              : ['Home', 'Services', 'Profile'][_currentIndex],
           style: const TextStyle(color: Colors.white),
         ),
         iconTheme: const IconThemeData(color: Colors.white),
@@ -1131,8 +1112,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
         children: [
           _buildHomeTab(context, authProvider),
           _buildServicesTab(context),
-          // Family tab navigates to Family Profile route instead
-          const SizedBox.shrink(),
           _buildProfileTab(context, authProvider),
         ],
       ),
@@ -1146,19 +1125,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: (index) {
-            // Family tab (index 2) navigates to the new Family Profile screen
-            if (index == 2) {
-              // Reset to Home tab before navigating (so when user returns, they see Home)
-              setState(() {
-                _currentIndex = 0;
-              });
-              context.goNamed(Routes.familyProfile);
-            } else {
-              setState(() {
-                _currentIndex = index;
-                _showCertificates = false;
-              });
-            }
+            setState(() {
+              _currentIndex = index;
+              _showCertificates = false;
+            });
           },
           type: BottomNavigationBarType.fixed,
           backgroundColor: Colors.transparent,
@@ -1169,7 +1139,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
           items: const [
             BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
             BottomNavigationBarItem(icon: Icon(Icons.apps), label: 'Services'),
-            BottomNavigationBarItem(icon: Icon(Icons.people), label: 'Family'),
             BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
           ],
         ),

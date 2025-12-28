@@ -18,6 +18,246 @@ class ApplicationException implements Exception {
 class ApplicationService {
   const ApplicationService();
 
+  /// Fetch person identity from NIRA via backend
+  ///
+  /// [nationalId] - National ID number
+  /// [token] - JWT authentication token
+  /// Returns identity data from NIRA
+  Future<Map<String, dynamic>> fetchPersonByNationalId({
+    required String nationalId,
+    required String token,
+  }) async {
+    debugPrint('=== IDENTITY LOOKUP START ===');
+    debugPrint('National ID: $nationalId');
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/identity/nira/$nationalId');
+    debugPrint('URL: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Response received:');
+    debugPrint('  Status Code: ${response.statusCode}');
+    debugPrint('  Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      debugPrint('=== IDENTITY LOOKUP SUCCESS ===');
+      return body['data'] as Map<String, dynamic>? ?? {};
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to fetch identity';
+      debugPrint('=== IDENTITY LOOKUP FAILED ===');
+      debugPrint('Error: $message');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Submit a Birth application to the backend using multipart/form-data
+  ///
+  /// [applicantNationalId] - Applicant's National ID
+  /// [child] - Child information map
+  /// [fatherNationalId] - Father's National ID
+  /// [motherNationalId] - Mother's National ID
+  /// [fatherResidence] - Father's residence (district, sector)
+  /// [motherResidence] - Mother's residence (district, sector)
+  /// [documents] - List of File objects to upload
+  /// [token] - JWT authentication token
+  Future<Map<String, dynamic>> submitBirthApplication({
+    required String applicantNationalId,
+    required Map<String, dynamic> child,
+    required String fatherNationalId,
+    required String motherNationalId,
+    required Map<String, dynamic> fatherResidence,
+    required Map<String, dynamic> motherResidence,
+    required String token,
+    List<File> documents = const [],
+  }) async {
+    debugPrint('=== BIRTH APPLICATION SUBMISSION START ===');
+    debugPrint('Applicant National ID: $applicantNationalId');
+    debugPrint('Father National ID: $fatherNationalId');
+    debugPrint('Mother National ID: $motherNationalId');
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/applications/birth');
+    debugPrint('URL: $uri');
+
+    // Create multipart request
+    final request = http.MultipartRequest('POST', uri);
+
+    // Add headers
+    request.headers['Authorization'] = 'Bearer $token';
+    debugPrint('Authorization header set');
+
+    // Add form fields
+    request.fields['applicantNationalId'] = applicantNationalId;
+    request.fields['child'] = jsonEncode(child);
+    request.fields['fatherNationalId'] = fatherNationalId;
+    request.fields['motherNationalId'] = motherNationalId;
+    request.fields['fatherResidence'] = jsonEncode(fatherResidence);
+    request.fields['motherResidence'] = jsonEncode(motherResidence);
+    debugPrint('Form fields added');
+
+    // Add files
+    for (final file in documents) {
+      if (await file.exists()) {
+        final fileName = file.path.split('/').last;
+        final fileExtension = fileName.split('.').last.toLowerCase();
+
+        // Determine content type
+        String contentType;
+        if (fileExtension == 'pdf') {
+          contentType = 'application/pdf';
+        } else if (['jpg', 'jpeg'].contains(fileExtension)) {
+          contentType = 'image/jpeg';
+        } else if (fileExtension == 'png') {
+          contentType = 'image/png';
+        } else {
+          contentType = 'application/octet-stream';
+        }
+
+        final fileStream = http.ByteStream(file.openRead());
+        final fileLength = await file.length();
+        final multipartFile = http.MultipartFile(
+          'documents',
+          fileStream,
+          fileLength,
+          filename: fileName,
+          contentType: http.MediaType.parse(contentType),
+        );
+
+        request.files.add(multipartFile);
+      }
+    }
+
+    // Send request
+    debugPrint('Sending POST request to backend...');
+    final streamedResponse = await request.send();
+    debugPrint('Request sent, waiting for response...');
+    
+    final response = await http.Response.fromStream(streamedResponse);
+    debugPrint('Response received:');
+    debugPrint('  Status Code: ${response.statusCode}');
+    debugPrint('  Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      debugPrint('=== BIRTH APPLICATION SUBMISSION SUCCESS ===');
+      debugPrint('Response data: ${body['data']}');
+      return body['data'] as Map<String, dynamic>? ?? {};
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to submit birth application';
+      debugPrint('=== BIRTH APPLICATION SUBMISSION FAILED ===');
+      debugPrint('Error: $message');
+      debugPrint('Status Code: ${response.statusCode}');
+      debugPrint('Response Body: ${response.body}');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Submit a Marriage application (CRVS - Islamic Law)
+  ///
+  /// [applicantNationalId] - Applicant's National ID
+  /// [groomNationalId] - Groom's National ID
+  /// [brideNationalId] - Bride's National ID
+  /// [wali] - Wali information {nationalId, relationship}
+  /// [witnesses] - Array of 2 witness objects [{nationalId}, {nationalId}]
+  /// [sheikh] - Sheikh information {nationalId}
+  /// [meher] - Meher information {type, value, currency?, deferred}
+  /// [marriageDetails] - Marriage details {date, district, sector, place?}
+  /// [documents] - List of File objects to upload
+  /// [token] - JWT authentication token
+  Future<Map<String, dynamic>> submitMarriageApplication({
+    required String applicantNationalId,
+    required String groomNationalId,
+    required String brideNationalId,
+    required Map<String, dynamic> wali,
+    required List<Map<String, dynamic>> witnesses,
+    required Map<String, dynamic> sheikh,
+    required Map<String, dynamic> meher,
+    required Map<String, dynamic> marriageDetails,
+    required String token,
+    List<File> documents = const [],
+  }) async {
+    debugPrint('=== MARRIAGE APPLICATION SUBMISSION START ===');
+    debugPrint('Applicant National ID: $applicantNationalId');
+    debugPrint('Groom National ID: $groomNationalId');
+    debugPrint('Bride National ID: $brideNationalId');
+
+    final uri = Uri.parse('${ApiConstants.baseUrl}/api/applications/marriage');
+    debugPrint('URL: $uri');
+
+    final request = http.MultipartRequest('POST', uri);
+    request.headers['Authorization'] = 'Bearer $token';
+
+    request.fields['applicantNationalId'] = applicantNationalId;
+    request.fields['groomNationalId'] = groomNationalId;
+    request.fields['brideNationalId'] = brideNationalId;
+    request.fields['wali'] = jsonEncode(wali);
+    request.fields['witnesses'] = jsonEncode(witnesses);
+    request.fields['sheikh'] = jsonEncode(sheikh);
+    request.fields['meher'] = jsonEncode(meher);
+    request.fields['marriageDetails'] = jsonEncode(marriageDetails);
+
+    for (final file in documents) {
+      if (await file.exists()) {
+        final fileName = file.path.split('/').last;
+        final fileExtension = fileName.split('.').last.toLowerCase();
+        String contentType;
+        if (fileExtension == 'pdf') {
+          contentType = 'application/pdf';
+        } else if (['jpg', 'jpeg'].contains(fileExtension)) {
+          contentType = 'image/jpeg';
+        } else if (fileExtension == 'png') {
+          contentType = 'image/png';
+        } else {
+          contentType = 'application/octet-stream';
+        }
+        final fileStream = http.ByteStream(file.openRead());
+        final fileLength = await file.length();
+        final multipartFile = http.MultipartFile(
+          'documents',
+          fileStream,
+          fileLength,
+          filename: fileName,
+          contentType: http.MediaType.parse(contentType),
+        );
+        request.files.add(multipartFile);
+      }
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+    debugPrint('Response Status: ${response.statusCode}');
+    debugPrint('Response Body: ${response.body}');
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      debugPrint('=== MARRIAGE APPLICATION SUBMISSION SUCCESS ===');
+      return body['data'] as Map<String, dynamic>? ?? {};
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to submit marriage application';
+      debugPrint('=== MARRIAGE APPLICATION SUBMISSION FAILED ===');
+      debugPrint('Error: $message');
+      throw ApplicationException(message);
+    }
+  }
+
   /// Submit an application to the backend using multipart/form-data
   ///
   /// [type] - Application type: "birth", "marriage", "divorce", or "death"
@@ -664,6 +904,56 @@ class ApplicationService {
           jsonDecode(response.body) as Map<String, dynamic>;
       final message =
           body['message'] as String? ?? 'Failed to fetch certificates';
+      debugPrint('API Error: $message (Status: ${response.statusCode})');
+      throw ApplicationException(message);
+    }
+  }
+
+  /// Get certificate by application ID
+  ///
+  /// [applicationId] - Application ID
+  /// [token] - JWT authentication token
+  /// Returns certificate info or null if not found
+  Future<Map<String, dynamic>?> getCertificateByApplicationId({
+    required String applicationId,
+    required String token,
+  }) async {
+    final uri = Uri.parse(
+        '${ApiConstants.baseUrl}/api/certificates/by-application/$applicationId');
+
+    debugPrint('Fetching certificate by application ID: $uri');
+
+    final response = await http.get(
+      uri,
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    debugPrint('Certificate by Application API Response Status: ${response.statusCode}');
+    debugPrint('Certificate by Application API Response Body: ${response.body}');
+
+    if (response.statusCode == 404) {
+      // Certificate not found - this is expected if not generated yet
+      return null;
+    }
+
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final data = body['data'] as Map<String, dynamic>?;
+
+      if (data != null) {
+        return data;
+      } else {
+        throw ApplicationException('Invalid response format from server');
+      }
+    } else {
+      final Map<String, dynamic> body =
+          jsonDecode(response.body) as Map<String, dynamic>;
+      final message =
+          body['message'] as String? ?? 'Failed to get certificate';
       debugPrint('API Error: $message (Status: ${response.statusCode})');
       throw ApplicationException(message);
     }

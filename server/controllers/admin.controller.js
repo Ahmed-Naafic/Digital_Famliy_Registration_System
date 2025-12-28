@@ -6,6 +6,7 @@ import {
   rejectApplication,
 } from '../services/application.service.js';
 import { getAdminStatistics, getAllCitizens, getAllFamilies, getFamilyMembersByFamilyId, getServiceStatistics, updateServiceStatus } from '../services/admin.service.js';
+// CRVS model: Family functions return empty data
 import { getAllCertificates } from '../services/certificate.service.js';
 import Application from '../models/Application.model.js';
 
@@ -235,7 +236,6 @@ export const getAdminApplicationController = async (req, res, next) => {
     // Admin can view any application, so we don't check userId
     const application = await Application.findById(id)
       .populate('userId', 'fullName email')
-      .populate('familyId', 'familyName')
       .populate('reviewedBy', 'fullName email')
       .lean();
 

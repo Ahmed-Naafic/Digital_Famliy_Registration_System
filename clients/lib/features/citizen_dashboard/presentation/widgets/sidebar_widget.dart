@@ -6,7 +6,6 @@ import '../../../../core/utils/constants.dart';
 import '../../../../core/theme_provider.dart';
 import '../../../../core/router/route_names.dart';
 import '../../../auth/auth_provider.dart';
-import '../../../family/providers/family_provider.dart';
 
 /// Sidebar Widget
 /// Modern theme-aware drawer widget with gradient header
@@ -226,14 +225,7 @@ class SidebarWidget extends StatelessWidget {
                   onTap: () {
                     Navigator.pop(context);
                     authProvider.logout();
-                    // Clear family state on logout (only if FamilyProvider exists)
-                    try {
-                      final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
-                      familyProvider.reset();
-                    } catch (e) {
-                      // FamilyProvider not available (e.g., in admin routes)
-                      debugPrint('FamilyProvider not available during logout: $e');
-                    }
+                    // CRVS model: No family state to clear
                     context.goNamed(Routes.login);
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(

@@ -5,7 +5,6 @@ import '../../../core/utils/constants.dart';
 import '../../../core/theme_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../auth_provider.dart';
-import '../../family/providers/family_provider.dart';
 
 /// Splash/Onboarding Screen
 /// Theme-aware onboarding screen with gradient backgrounds
@@ -66,27 +65,10 @@ class _SplashScreenState extends State<SplashScreen> {
         debugPrint('🔐 Splash - Role: $role');
         debugPrint('🔐 Splash - User: ${authProvider.user?.name}');
         
-        // Check if user has a family (for citizens)
+        // CRVS model: No family check needed
         if (role == 'citizen') {
-          debugPrint('🔐 Splash - User is citizen, checking family...');
-          final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
-          final token = authProvider.token;
-          
-          if (token != null && token.isNotEmpty) {
-            await familyProvider.checkFamily(token: token);
-            
-            if (!mounted) return;
-            
-            // Navigate based on family status
-            if (familyProvider.hasFamily) {
-              context.goNamed(Routes.dashboard);
-            } else {
-              // Redirect to create family page
-              context.goNamed(Routes.createFamily);
-            }
-          } else {
-            if (mounted) context.goNamed(Routes.dashboard);
-          }
+          debugPrint('🔐 Splash - User is citizen, redirecting to dashboard');
+          if (mounted) context.goNamed(Routes.dashboard);
         } else if (role == 'admin') {
           // Admin goes directly to admin dashboard
           debugPrint('🔐 Splash - User is admin, redirecting to admin dashboard');

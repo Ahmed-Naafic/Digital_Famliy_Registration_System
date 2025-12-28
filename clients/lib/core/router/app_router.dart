@@ -12,16 +12,15 @@ import '../../features/citizen_dashboard/presentation/dashboard_screen.dart';
 import '../../features/citizen_dashboard/presentation/settings_screen.dart';
 import '../../features/admin/presentation/admin_dashboard_screen.dart';
 import '../../features/birth_registration/presentation/pages/birth_registration_flow_page.dart';
+import '../../features/birth_registration/presentation/pages/birth_service_selector_page.dart';
+import '../../features/birth_registration/presentation/pages/birth_certificate_page.dart';
 import '../../features/marriage_registration/presentation/pages/marriage_registration_flow_page.dart';
 import '../../features/divorce_registration/presentation/pages/divorce_registration_flow_page.dart';
 import '../../features/death_registration/presentation/pages/death_registration_flow_page.dart';
-import '../../features/family_profile/presentation/pages/family_profile_page.dart';
-import '../../features/family_profile/presentation/pages/create_family_page.dart';
 import '../../features/application_status/presentation/pages/application_status_page.dart';
 import '../../features/certificate_viewer/presentation/pages/certificate_viewer_page.dart';
 import '../../features/admin/presentation/pages/applications_page.dart';
 import '../../features/admin/presentation/pages/citizens_page.dart';
-import '../../features/admin/presentation/pages/families_page.dart';
 import '../../features/admin/presentation/pages/services_page.dart';
 import '../../features/admin/presentation/pages/admin_certificates_page.dart';
 import 'route_names.dart';
@@ -155,11 +154,6 @@ final GoRouter appRouter = GoRouter(
       builder: (context, state) => const CitizensPage(),
     ),
     GoRoute(
-      path: '/admin/families',
-      name: Routes.adminFamilies,
-      builder: (context, state) => const FamiliesPage(),
-    ),
-    GoRoute(
       path: '/admin/certificates',
       name: Routes.adminCertificates,
       builder: (context, state) => const AdminCertificatesPage(),
@@ -172,9 +166,19 @@ final GoRouter appRouter = GoRouter(
 
     // Citizen service routes
     GoRoute(
+      path: '/birth-service-selector',
+      name: Routes.birthServiceSelector,
+      builder: (context, state) => const BirthServiceSelectorPage(),
+    ),
+    GoRoute(
       path: '/birth-registration',
       name: Routes.birthRegistration,
       builder: (context, state) => const BirthRegistrationFlowPage(),
+    ),
+    GoRoute(
+      path: '/birth-certificate',
+      name: Routes.birthCertificate,
+      builder: (context, state) => const BirthCertificatePage(),
     ),
     GoRoute(
       path: '/marriage-registration',
@@ -190,16 +194,6 @@ final GoRouter appRouter = GoRouter(
       path: '/death-registration',
       name: Routes.deathRegistration,
       builder: (context, state) => const DeathRegistrationFlowPage(),
-    ),
-    GoRoute(
-      path: '/family-profile',
-      name: Routes.familyProfile,
-      builder: (context, state) => const FamilyProfilePage(),
-    ),
-    GoRoute(
-      path: '/create-family',
-      name: Routes.createFamily,
-      builder: (context, state) => const CreateFamilyPage(),
     ),
     GoRoute(
       path: '/application-status',

@@ -59,27 +59,36 @@ export const generateCertificatePDF = async (certificateData) => {
         yPosition = addDivorceCertificateContent(doc, details, yPosition);
       }
 
-      // Footer
-      const footerY = 750;
+      // Footer - position to ensure single page
+      // A4 page height is 842 points, position footer near bottom
+      const pageHeight = 842;
+      // Calculate footer position: ensure it fits on same page
+      // If content is too high, position footer at fixed safe position
+      const maxContentY = pageHeight - 90; // Leave 90 points for footer
+      const footerY = yPosition > maxContentY ? pageHeight - 90 : Math.max(yPosition + 30, pageHeight - 90);
+      
+      // Ensure footer doesn't exceed page bounds
+      const safeFooterY = Math.min(footerY, pageHeight - 90);
+      
       doc.strokeColor('#cccccc')
-        .moveTo(50, footerY)
-        .lineTo(545, footerY)
+        .moveTo(50, safeFooterY)
+        .lineTo(545, safeFooterY)
         .stroke();
 
       doc.fontSize(10)
         .fillColor('#666666')
-        .text(`Issued on: ${formatDate(issueDateObj)}`, 50, footerY + 10)
-        .text(`Approved by: ${issuedBy}`, 50, footerY + 25)
-        .text('Digitally Generated – No Physical Signature Required', 50, footerY + 40, {
+        .text(`Issued on: ${formatDate(issueDateObj)}`, 50, safeFooterY + 8)
+        .text(`Approved by: ${issuedBy}`, 50, safeFooterY + 20)
+        .text('Digitally Generated – No Physical Signature Required', 50, safeFooterY + 32, {
           align: 'center',
           width: 495,
           font: 'Helvetica-Oblique',
         });
 
-      // QR Code placeholder (text representation)
+      // QR Code placeholder (compact)
       doc.fontSize(8)
         .fillColor('#999999')
-        .text('QR Code: Verification Available', 50, footerY + 60, { align: 'center', width: 495 });
+        .text('QR Code: Verification Available', 50, safeFooterY + 48, { align: 'center', width: 495 });
 
       doc.end();
     } catch (error) {
@@ -92,12 +101,15 @@ export const generateCertificatePDF = async (certificateData) => {
  * Add birth certificate content
  */
 function addBirthCertificateContent(doc, details, yPos) {
+  // Optimize spacing to fit on single page
+  // A4 page: 842 points height, header: 150, footer: ~100, usable: ~592
+  
   doc.fontSize(16)
     .font('Helvetica-Bold')
     .fillColor('#14B8A6')
     .text(details.childName || 'Unknown', 50, yPos, { align: 'center', width: 495 });
 
-  yPos += 40;
+  yPos += 35; // Reduced from 40
 
   doc.fontSize(12)
     .font('Helvetica')
@@ -114,20 +126,39 @@ function addBirthCertificateContent(doc, details, yPos) {
     doc.text(`${field.label}:`, 100, yPos, { width: 150, continued: false });
     doc.font('Helvetica-Bold').text(field.value, 250, yPos, { width: 245 });
     doc.font('Helvetica');
-    yPos += 25;
+    yPos += 22; // Reduced from 25
   });
 
   // Parents section
-  yPos += 20;
+  yPos += 15; // Reduced from 20
   doc.font('Helvetica-Bold').fontSize(14).text('Parents', 50, yPos);
-  yPos += 25;
+  yPos += 22; // Reduced from 25
 
   doc.font('Helvetica').fontSize(12);
   doc.text(`Father: ${details.fatherName || 'Unknown'}`, 100, yPos);
-  yPos += 20;
+  yPos += 18; // Reduced from 20
   doc.text(`Mother: ${details.motherName || 'Unknown'}`, 100, yPos);
 
-  return yPos + 30;
+  // Add residence information if available (compact)
+  if (details.fatherDistrict || details.motherDistrict) {
+    yPos += 15; // Reduced from 20
+    if (details.fatherDistrict || details.fatherSector) {
+      const fatherResidence = [details.fatherDistrict, details.fatherSector].filter(Boolean).join(', ');
+      if (fatherResidence) {
+        doc.fontSize(11).text(`Father's Residence: ${fatherResidence}`, 100, yPos);
+        yPos += 18; // Reduced from 20
+      }
+    }
+    if (details.motherDistrict || details.motherSector) {
+      const motherResidence = [details.motherDistrict, details.motherSector].filter(Boolean).join(', ');
+      if (motherResidence) {
+        doc.fontSize(11).text(`Mother's Residence: ${motherResidence}`, 100, yPos);
+        yPos += 18; // Reduced from 20
+      }
+    }
+  }
+
+  return yPos + 15; // Reduced spacing to ensure single page
 }
 
 /**

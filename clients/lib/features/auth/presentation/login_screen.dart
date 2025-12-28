@@ -8,7 +8,6 @@ import '../../../core/utils/constants.dart';
 import '../../../core/theme_provider.dart';
 import '../../../core/router/route_names.dart';
 import '../auth_provider.dart';
-import '../../family/providers/family_provider.dart';
 
 /// Login Screen
 /// Theme-aware login screen with gradient backgrounds
@@ -58,34 +57,8 @@ class _LoginScreenState extends State<LoginScreen> {
           context.goNamed(Routes.admin);
         } else {
           debugPrint('🔐 Login - Redirecting to citizen dashboard');
-          // Check if user has a family (citizens only)
-          final token = authProvider.token;
-          
-          if (token != null && token.isNotEmpty) {
-            try {
-              // Safely access FamilyProvider
-              final familyProvider = Provider.of<FamilyProvider>(context, listen: false);
-              await familyProvider.checkFamily(token: token);
-              
-              if (!mounted) return;
-              
-              // Navigate based on family status
-              if (familyProvider.hasFamily) {
-                context.goNamed(Routes.dashboard);
-              } else {
-                // Redirect to create family page
-                context.goNamed(Routes.createFamily);
-              }
-            } catch (e) {
-              // If FamilyProvider is not available, just go to dashboard
-              debugPrint('⚠️ FamilyProvider not available: $e');
-              if (mounted) {
-                context.goNamed(Routes.dashboard);
-              }
-            }
-          } else {
-            context.goNamed(Routes.dashboard);
-          }
+          // CRVS model: No family check needed - go directly to dashboard
+          context.goNamed(Routes.dashboard);
         }
       } catch (e) {
         if (!mounted) return;

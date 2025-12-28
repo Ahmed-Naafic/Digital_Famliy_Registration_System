@@ -2,91 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter_form_builder/flutter_form_builder.dart';
 import 'package:form_builder_validators/form_builder_validators.dart';
 import 'package:provider/provider.dart';
-import '../../../../features/applications/data/application_service.dart';
 import '../../../../features/auth/auth_provider.dart';
 import '../provider/marriage_form_provider.dart';
 
-/// Family Member Model for selection
-class FamilyMember {
-  final String id;
-  final String fullName;
-  final String? gender;
-  final DateTime? dateOfBirth;
-
-  FamilyMember({
-    required this.id,
-    required this.fullName,
-    this.gender,
-    this.dateOfBirth,
-  });
-
-  factory FamilyMember.fromJson(Map<String, dynamic> json) {
-    return FamilyMember(
-      id: json['id'] as String,
-      fullName: json['fullName'] as String? ?? 
-                '${json['firstName']} ${json['lastName']}',
-      gender: json['gender'] as String?,
-      dateOfBirth: json['dateOfBirth'] != null
-          ? DateTime.tryParse(json['dateOfBirth'].toString())
-          : null,
-    );
-  }
-
-  @override
-  String toString() => fullName;
-}
-
-/// Marriage Registration Step 2: Select Wife from Family Members
+/// Marriage Registration Step 2: Bride Details (using National ID)
 class MarriageRegistrationStep2Page extends StatefulWidget {
   const MarriageRegistrationStep2Page({super.key});
 
   @override
-  State<MarriageRegistrationStep2Page> createState() => _MarriageRegistrationStep2PageState();
+  State<MarriageRegistrationStep2Page> createState() =>
+      _MarriageRegistrationStep2PageState();
 }
 
-class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep2Page> {
+class _MarriageRegistrationStep2PageState
+    extends State<MarriageRegistrationStep2Page> {
   final _formKey = GlobalKey<FormBuilderState>();
-  List<FamilyMember> _familyMembers = [];
-  bool _isLoadingMembers = true;
-  String? _errorLoadingMembers;
+  final _brideIdController = TextEditingController();
 
   @override
-  void initState() {
-    super.initState();
-    _fetchFamilyMembers();
-  }
-
-  Future<void> _fetchFamilyMembers() async {
-    setState(() {
-      _isLoadingMembers = true;
-      _errorLoadingMembers = null;
-    });
-
-    final authProvider = context.read<AuthProvider>();
-    final applicationService = const ApplicationService();
-    final token = authProvider.token;
-
-    if (token == null || token.isEmpty) {
-      setState(() {
-        _errorLoadingMembers = 'Authentication token missing. Please log in.';
-        _isLoadingMembers = false;
-      });
-      return;
-    }
-
-    try {
-      final rawMembers = await applicationService.getFamilyMembers(token: token);
-      setState(() {
-        _familyMembers =
-            rawMembers.map((json) => FamilyMember.fromJson(json)).toList();
-        _isLoadingMembers = false;
-      });
-    } catch (e) {
-      setState(() {
-        _errorLoadingMembers = 'Failed to load family members: $e';
-        _isLoadingMembers = false;
-      });
-    }
+  void dispose() {
+    _brideIdController.dispose();
+    super.dispose();
   }
 
   @override
@@ -94,6 +30,13 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
     final provider = Provider.of<MarriageFormProvider>(context);
+    final authProvider = Provider.of<AuthProvider>(context);
+
+    // Sync controller with provider value
+    if (provider.brideNationalId != null &&
+        _brideIdController.text != provider.brideNationalId) {
+      _brideIdController.text = provider.brideNationalId!;
+    }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -115,7 +58,7 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
                   const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Please select the wife from your existing family members. She must already be registered in your family.',
+                      'Enter bride\'s National ID to verify identity via NIRA. Bride must be FEMALE and not already married.',
                       style: textTheme.bodyMedium,
                     ),
                   ),
@@ -127,14 +70,12 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
 
           // Section Header
           Text(
-            'Wife Information',
-            style: textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+            'Bride Information',
+            style: textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            'Select wife from your family members',
+            'Bride details (must be female)',
             style: textTheme.bodyMedium?.copyWith(
               color: colorScheme.onSurface.withOpacity(0.6),
             ),
@@ -149,53 +90,131 @@ class _MarriageRegistrationStep2PageState extends State<MarriageRegistrationStep
                 key: _formKey,
                 child: Column(
                   children: [
-                    if (_isLoadingMembers)
-                      const Center(child: CircularProgressIndicator())
-                    else if (_errorLoadingMembers != null)
-                      Text(
-                        _errorLoadingMembers!,
-                        style: textTheme.bodyMedium?.copyWith(color: Colors.red),
-                      )
-                    else if (_familyMembers.isEmpty)
-                      Text(
-                        'No family members found. Please add family members first before registering a marriage.',
-                        style: textTheme.bodyMedium?.copyWith(
-                          color: colorScheme.onSurface.withOpacity(0.6),
-                        ),
-                      )
-                    else
-                      FormBuilderDropdown<FamilyMember>(
-                        name: 'wife',
-                        initialValue: provider.wifeId != null
-                            ? _familyMembers.firstWhere(
-                                (m) => m.id == provider.wifeId,
-                                orElse: () => _familyMembers.first,
+                    FormBuilderTextField(
+                      name: 'brideNationalId',
+                      controller: _brideIdController,
+                      decoration: InputDecoration(
+                        labelText: 'Bride National ID *',
+                        hintText: 'Enter bride\'s National ID',
+                        prefixIcon: const Icon(Icons.badge),
+                        suffixIcon: provider.isLoadingBride
+                            ? const Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2),
+                                ),
                               )
-                            : null,
-                        decoration: const InputDecoration(
-                          labelText: 'Wife *',
-                          hintText: 'Select wife',
-                          prefixIcon: Icon(Icons.person),
-                        ),
-                        validator: FormBuilderValidators.required(),
-                        items: _familyMembers
-                            .where((m) => m.gender == 'female' || m.gender == null)
-                            .map(
-                              (member) => DropdownMenuItem(
-                                value: member,
-                                child: Text(member.fullName),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (value) {
-                          if (value != null) {
-                            provider.updateWifeId(value.id, value.fullName);
-                          }
-                        },
+                            : provider.brideIdentity != null
+                                ? Icon(Icons.check_circle, color: Colors.green)
+                                : null,
                       ),
+                      validator: FormBuilderValidators.compose([
+                        FormBuilderValidators.required(),
+                      ]),
+                      onChanged: (value) {
+                        provider.updateBrideNationalId(value);
+                        if (value != null && value.length >= 9) {
+                          final token = authProvider.token;
+                          if (token != null && token.isNotEmpty) {
+                            provider.fetchBrideIdentity(token);
+                          }
+                        }
+                      },
+                    ),
+                    if (provider.brideError != null) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.red.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red, size: 20),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                provider.brideError!,
+                                style: TextStyle(color: Colors.red, fontSize: 13, fontWeight: FontWeight.w500),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    if (provider.brideIdentity != null) ...[
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: colorScheme.surfaceVariant.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Verified Identity (Read-only)',
+                              style: textTheme.labelSmall?.copyWith(
+                                color: colorScheme.onSurface.withOpacity(0.6),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildReadOnlyField(
+                              context,
+                              'Full Name',
+                              provider.brideIdentity!.fullName,
+                            ),
+                            if (provider.brideIdentity!.dateOfBirth != null)
+                              _buildReadOnlyField(
+                                context,
+                                'Date of Birth',
+                                provider.brideIdentity!.dateOfBirth!,
+                              ),
+                            if (provider.brideIdentity!.gender != null)
+                              _buildReadOnlyField(
+                                context,
+                                'Gender',
+                                provider.brideIdentity!.gender!.toUpperCase(),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(BuildContext context, String label, String value) {
+    final textTheme = Theme.of(context).textTheme;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 100,
+            child: Text(
+              '$label:',
+              style: textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: textTheme.bodyMedium,
             ),
           ),
         ],

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Allow access to external storage root -->
+    <external-path name="external_storage_root" path="." />
+    <!-- Allow access to Downloads folder -->
+    <external-path name="downloads" path="Download" />
+    <!-- Allow access to all external files -->
+    <external-files-path name="external_files" path="." />
+    <!-- Allow access to cache -->
+    <cache-path name="cache" path="." />
+    <external-cache-path name="external_cache" path="." />
+    <!-- Allow access to app files -->
+    <files-path name="files" path="." />
+</paths>
+

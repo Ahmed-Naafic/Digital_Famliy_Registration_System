@@ -36,9 +36,10 @@ const applicationSchema = new Schema(
       ref: 'User',
       required: true,
     },
-    familyId: {
-      type: Schema.Types.ObjectId,
-      ref: 'Family',
+    applicationType: {
+      type: String,
+      enum: ['BIRTH', 'MARRIAGE'],
+      default: 'BIRTH',
     },
     type: {
       type: String,

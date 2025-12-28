@@ -38,42 +38,36 @@ class _AdminSidebarState extends State<AdminSidebar> {
           Navigator.pop(context);
           break;
       case 2:
-        // Navigate to Families page
-        debugPrint('Navigating to families page: /admin/families');
-        router.go('/admin/families');
-        Navigator.pop(context);
-        break;
-      case 3:
         // Navigate to Certificates page
         debugPrint('Navigating to certificates page: /admin/certificates');
         router.go('/admin/certificates');
         Navigator.pop(context);
         break;
-      case 4:
+      case 3:
         // Navigate to Services page
         debugPrint('Navigating to services page: /admin/services');
         router.go('/admin/services');
         Navigator.pop(context);
         break;
-        case 5:
-          // Navigate to Applications page
-          debugPrint('Navigating to applications page: /admin/applications');
-          router.go('/admin/applications');
-          Navigator.pop(context);
-          break;
-      case 6:
+      case 4:
+        // Navigate to Applications page
+        debugPrint('Navigating to applications page: /admin/applications');
+        router.go('/admin/applications');
+        Navigator.pop(context);
+        break;
+      case 5:
         // Navigate to Admin Users page
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Admin Users page coming soon')),
         );
         break;
-      case 7:
+      case 6:
         // Navigate to Settings
         router.push('/settings');
         Navigator.pop(context);
         break;
-      case 8:
+      case 7:
         // Logout
           Navigator.pop(context);
           _handleLogout(context);
@@ -117,7 +111,6 @@ class _AdminSidebarState extends State<AdminSidebar> {
     final menuItems = [
       {'title': 'Dashboard', 'icon': Icons.dashboard},
       {'title': 'Citizens', 'icon': Icons.people},
-      {'title': 'Families', 'icon': Icons.family_restroom},
       {'title': 'Certificates', 'icon': Icons.description},
       {'title': 'Services', 'icon': Icons.apps},
       {'title': 'Applications', 'icon': Icons.assignment},
@@ -197,7 +190,7 @@ class _AdminSidebarState extends State<AdminSidebar> {
                       final index = entry.key;
                       final item = entry.value;
                       final isSelected = _selectedIndex == index;
-                      final isLogout = index == 8;
+                      final isLogout = index == 7;
 
                       return ListTile(
                         selected: isSelected,

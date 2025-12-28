@@ -1,0 +1,28 @@
+{
+  "name": "nira_mock_server",
+  "version": "1.0.0",
+  "description": "Mock NIRA (National Identification and Registration Authority) server for development and testing",
+  "main": "src/server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed": "node scripts/seed.js"
+  },
+  "keywords": [
+    "nira",
+    "mock",
+    "identity",
+    "verification"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.2.3",
+    "express": "^5.2.1",
+    "mongoose": "^9.0.2"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.11"
+  }
+}

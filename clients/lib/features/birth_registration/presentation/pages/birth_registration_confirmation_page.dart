@@ -61,11 +61,15 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
           .toList();
       debugPrint('Document files: ${documentFiles.length}');
 
-      // Submit application to backend with files
-      debugPrint('Calling applicationService.submitApplication...');
-      await applicationService.submitApplication(
-        type: 'birth',
-        payload: payload,
+      // Submit Birth application to backend with files
+      debugPrint('Calling applicationService.submitBirthApplication...');
+      await applicationService.submitBirthApplication(
+        applicantNationalId: provider.applicantNationalId!,
+        child: payload['child'] as Map<String, dynamic>,
+        fatherNationalId: provider.fatherNationalId!,
+        motherNationalId: provider.motherNationalId!,
+        fatherResidence: payload['fatherResidence'] as Map<String, dynamic>,
+        motherResidence: payload['motherResidence'] as Map<String, dynamic>,
         token: token,
         documents: documentFiles,
       );
@@ -183,6 +187,46 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
                         provider.placeOfBirth ?? '',
                       ),
                       _buildInfoTile(context, 'Gender', provider.gender ?? ''),
+                      _buildInfoTile(
+                        context,
+                        'Nationality',
+                        provider.nationality ?? '',
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Applicant Details Card
+                Card(
+                  child: Column(
+                    children: [
+                      ListTile(
+                        leading: Icon(Icons.person, color: colorScheme.primary),
+                        title: Text(
+                          'Applicant Details',
+                          style: textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        trailing: TextButton(
+                          onPressed: () => _onEditStep(context, provider, 0),
+                          child: const Text('Edit'),
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      _buildInfoTile(
+                        context,
+                        'National ID',
+                        provider.applicantNationalId ?? '',
+                      ),
+                      if (provider.applicantIdentity != null)
+                        _buildInfoTile(
+                          context,
+                          'Full Name',
+                          provider.applicantIdentity!.fullName,
+                        ),
                     ],
                   ),
                 ),
@@ -207,15 +251,48 @@ class BirthRegistrationConfirmationPage extends StatelessWidget {
                         ),
                       ),
                       const Divider(height: 1),
+                      if (provider.fatherIdentity != null)
+                        _buildInfoTile(
+                          context,
+                          'Father\'s Name',
+                          provider.fatherIdentity!.fullName,
+                        ),
                       _buildInfoTile(
                         context,
-                        'Father\'s Name',
-                        provider.fatherName ?? '',
+                        'Father National ID',
+                        provider.fatherNationalId ?? '',
                       ),
                       _buildInfoTile(
                         context,
-                        'Mother\'s Name',
-                        provider.motherName ?? '',
+                        'Father District',
+                        provider.fatherDistrict ?? '',
+                      ),
+                      _buildInfoTile(
+                        context,
+                        'Father Sector',
+                        provider.fatherSector ?? '',
+                      ),
+                      const Divider(height: 1),
+                      if (provider.motherIdentity != null)
+                        _buildInfoTile(
+                          context,
+                          'Mother\'s Name',
+                          provider.motherIdentity!.fullName,
+                        ),
+                      _buildInfoTile(
+                        context,
+                        'Mother National ID',
+                        provider.motherNationalId ?? '',
+                      ),
+                      _buildInfoTile(
+                        context,
+                        'Mother District',
+                        provider.motherDistrict ?? '',
+                      ),
+                      _buildInfoTile(
+                        context,
+                        'Mother Sector',
+                        provider.motherSector ?? '',
                       ),
                     ],
                   ),

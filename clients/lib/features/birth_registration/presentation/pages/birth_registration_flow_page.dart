@@ -73,7 +73,7 @@ class _BirthRegistrationFlowPageState extends State<BirthRegistrationFlowPage> {
         builder: (context, provider, child) {
           final currentStep = provider.currentStep;
           final canProceed = currentStep == 0
-              ? provider.isStep1Valid
+              ? provider.isApplicantValid && provider.isStep1Valid
               : currentStep == 1
               ? provider.isStep2Valid
               : provider.isStep3Valid;

@@ -276,14 +276,6 @@ class ApplicationService extends ChangeNotifier {
     }
   }
 
-  /// Generate certificate URL (simulated - in real app, this would generate actual PDF)
-  String _generateCertificateUrl(Application application) {
-    // In a real app, this would generate a PDF and return the URL
-    // For now, we'll return a simulated URL
-    final timestamp = DateTime.now().millisecondsSinceEpoch;
-    return 'certificate://${application.id}/$timestamp.pdf';
-  }
-
   /// Reject an application (admin only)
   Future<void> rejectApplication(
     String applicationId, {
@@ -353,16 +345,6 @@ class ApplicationService extends ChangeNotifier {
     }
   }
 
-  /// Generate certificate number
-  String _generateCertificateNumber(ApplicationType serviceType) {
-    final prefix = serviceType.name.substring(0, 2).toUpperCase();
-    final year = DateTime.now().year;
-    final random = DateTime.now().millisecondsSinceEpoch.toString().substring(
-      7,
-    );
-    return '$prefix-$year-$random';
-  }
-
   /// Get certificate for an application
   Certificate? getCertificateForApplication(String applicationId) {
     try {
@@ -374,24 +356,6 @@ class ApplicationService extends ChangeNotifier {
     }
   }
 
-  /// Create a notification
-  void _createNotification({
-    required String userId,
-    required String title,
-    required String message,
-    String? actionRoute,
-  }) {
-    final notification = AppNotification(
-      id: 'NOTIF-${DateTime.now().millisecondsSinceEpoch}',
-      userId: userId,
-      title: title,
-      message: message,
-      createdAt: DateTime.now(),
-      actionRoute: actionRoute,
-    );
-
-    _notifications.add(notification);
-  }
 
   /// Mark notification as read
   void markNotificationAsRead(String notificationId) {

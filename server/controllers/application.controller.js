@@ -8,6 +8,7 @@ import { normalizeDocuments } from '../utils/application.util.js';
 import {
   createBirthApplication,
   createMarriageApplication,
+  createDivorceApplication,
   getUserApplications,
   getApplicationById,
 } from '../services/application.service.js';
@@ -347,6 +348,126 @@ export const createMarriageApplicationController = async (req, res, next) => {
     return successResponse(
       res,
       'Marriage application submitted successfully',
+      application,
+      201,
+    );
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Create a Divorce application (CRVS - Islamic Law)
+ * POST /api/applications/divorce
+ * Accepts multipart/form-data with files
+ */
+export const createDivorceApplicationController = async (req, res, next) => {
+  try {
+    // Backward compatibility: Check if user has nationalId
+    if (!req.user.nationalId) {
+      const error = new Error('User account is not linked to a National ID.');
+      error.statusCode = 403;
+      return next(error);
+    }
+
+    const {
+      marriageApplicationId,
+      divorceType,
+      witnesses,
+      meherStatus,
+      reason,
+      divorceDetails,
+    } = req.body;
+    const userId = req.user.id; // From auth middleware
+    const userNationalId = req.user.nationalId; // From auth middleware
+
+    // Validate required fields
+    if (!marriageApplicationId) {
+      const error = new Error('Marriage application ID is required');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    if (!divorceType) {
+      const error = new Error('Divorce type is required');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    const normalizedDivorceType = divorceType.toUpperCase();
+    if (!['TALAQ', 'KHUL'].includes(normalizedDivorceType)) {
+      const error = new Error('Invalid divorce type. Must be TALAQ or KHUL');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    if (!witnesses) {
+      const error = new Error('Witnesses are required');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    if (!meherStatus) {
+      const error = new Error('Meher status is required');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    if (!divorceDetails) {
+      const error = new Error('Divorce details are required');
+      error.statusCode = 400;
+      return next(error);
+    }
+
+    // Parse JSON strings if needed
+    let witnessesData = witnesses;
+    if (typeof witnesses === 'string') {
+      try {
+        witnessesData = JSON.parse(witnesses);
+      } catch (e) {
+        const error = new Error('Invalid witnesses data format');
+        error.statusCode = 400;
+        return next(error);
+      }
+    }
+
+    let meherStatusData = meherStatus;
+    if (typeof meherStatus === 'string') {
+      try {
+        meherStatusData = JSON.parse(meherStatus);
+      } catch (e) {
+        const error = new Error('Invalid meher status data format');
+        error.statusCode = 400;
+        return next(error);
+      }
+    }
+
+    let divorceDetailsData = divorceDetails;
+    if (typeof divorceDetails === 'string') {
+      try {
+        divorceDetailsData = JSON.parse(divorceDetails);
+      } catch (e) {
+        const error = new Error('Invalid divorce details data format');
+        error.statusCode = 400;
+        return next(error);
+      }
+    }
+
+    // Create divorce application via service (validation happens inside)
+    const application = await createDivorceApplication({
+      userId,
+      userNationalId,
+      marriageApplicationId,
+      divorceType: normalizedDivorceType,
+      witnesses: witnessesData,
+      meherStatus: meherStatusData,
+      reason: reason || null,
+      divorceDetails: divorceDetailsData,
+    });
+
+    return successResponse(
+      res,
+      'Divorce application submitted successfully',
       application,
       201,
     );

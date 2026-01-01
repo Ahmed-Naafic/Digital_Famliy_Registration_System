@@ -42,11 +42,15 @@ export const authMiddleware = async (req, res, next) => {
       throw error;
     }
 
+    // Get nationalId from JWT payload (preferred) or user document (backward compatibility)
+    const nationalId = decoded.nationalId || user.nationalId;
+
     req.user = {
       id: user._id,
       fullName: user.fullName,
       email: user.email,
       role: user.role,
+      nationalId: nationalId || null, // null for backward compatibility with old users
     };
 
     next();

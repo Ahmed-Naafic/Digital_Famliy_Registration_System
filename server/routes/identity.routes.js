@@ -12,3 +12,4 @@ router.get('/nira/:nationalId', getPersonByIdentity);
 
 export default router;
 
+

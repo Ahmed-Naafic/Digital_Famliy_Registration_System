@@ -38,3 +38,4 @@ locationSchema.index({ district: 1, isActive: 1 });
 
 export default mongoose.model('Location', locationSchema);
 
+

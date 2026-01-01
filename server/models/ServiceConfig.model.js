@@ -25,3 +25,4 @@ const serviceConfigSchema = new Schema(
 export default mongoose.model('ServiceConfig', serviceConfigSchema);
 
 
+

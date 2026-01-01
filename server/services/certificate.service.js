@@ -220,35 +220,36 @@ export const getCertificatesForCitizen = async (userId) => {
           causeOfDeath: payload.causeOfDeath,
         };
       } else if (type === 'divorce') {
-        // CRVS model: divorce not supported yet
-        details = {};
-
+        // CRVS model: divorce payload structure
+        const divorcePayload = payload.divorce || {};
+        
         // Ensure divorceDate is converted to string
         let divorceDateStr = application?.createdAt
           ? (application.createdAt instanceof Date
               ? application.createdAt.toISOString()
               : new Date(application.createdAt).toISOString())
           : new Date().toISOString();
-        if (payload.divorceDate) {
-          divorceDateStr = payload.divorceDate instanceof Date
-            ? payload.divorceDate.toISOString()
-            : new Date(payload.divorceDate).toISOString();
+        
+        if (divorcePayload.divorceDetails?.date) {
+          divorceDateStr = divorcePayload.divorceDetails.date instanceof Date
+            ? divorcePayload.divorceDetails.date.toISOString()
+            : new Date(divorcePayload.divorceDetails.date).toISOString();
         }
 
-        const husbandName = husband
-          ? `${husband.firstName} ${husband.lastName}`
-          : payload.husbandName || 'Unknown';
-        const wifeName = wife
-          ? `${wife.firstName} ${wife.lastName}`
-          : payload.wifeName || 'Unknown';
+        const husbandName = divorcePayload.husband?.snapshot?.fullName || 'Unknown';
+        const wifeName = divorcePayload.wife?.snapshot?.fullName || 'Unknown';
+        const divorceType = divorcePayload.divorceType || 'TALAQ';
+        const reason = divorcePayload.reason || null;
 
         details = {
           citizenName: `${husbandName} & ${wifeName}`,
           husbandName: husbandName,
           wifeName: wifeName,
           divorceDate: divorceDateStr,
-          court: payload.court || 'Family Court',
-          reasonCode: payload.reasonCode,
+          divorceType: divorceType,
+          reason: reason,
+          district: divorcePayload.divorceDetails?.district || '',
+          sector: divorcePayload.divorceDetails?.sector || '',
         };
       }
 

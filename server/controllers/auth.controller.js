@@ -3,13 +3,14 @@ import { successResponse, errorResponse } from '../utils/response.util.js';
 
 export const register = async (req, res) => {
   try {
-    const { fullName, email, phoneNumber, password } = req.body;
+    const { fullName, email, phoneNumber, password, nationalId } = req.body;
 
     const result = await registerUser({
       fullName,
       email,
       phoneNumber,
       password,
+      nationalId,
     });
 
     return successResponse(res, 'Registration successful', result, 201);

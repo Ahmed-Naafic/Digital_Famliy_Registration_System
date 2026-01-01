@@ -4,6 +4,7 @@ import { uploadDocuments } from '../middlewares/upload.middleware.js';
 import {
   createBirthApplicationController,
   createMarriageApplicationController,
+  createDivorceApplicationController,
   getMyApplications,
   getApplication,
 } from '../controllers/application.controller.js';
@@ -18,6 +19,9 @@ router.post('/birth', uploadDocuments, createBirthApplicationController);
 
 // Create a Marriage application (CRVS - Islamic Law) - with file upload support
 router.post('/marriage', uploadDocuments, createMarriageApplicationController);
+
+// Create a Divorce application (CRVS - Islamic Law) - no file uploads
+router.post('/divorce', createDivorceApplicationController);
 
 // Get all applications for the logged-in user
 router.get('/my', getMyApplications);

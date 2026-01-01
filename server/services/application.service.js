@@ -369,10 +369,15 @@ export const createMarriageApplication = async ({
   }
 
   // Check groom's existing approved marriages (limit to 4)
+  // Exclude divorced marriages
   const groomApprovedMarriages = await Application.countDocuments({
     type: 'marriage',
     status: 'approved',
     'payload.marriage.groom.nationalId': groomNationalId.trim(),
+    $or: [
+      { 'payload.marriage.isDivorced': { $ne: true } },
+      { 'payload.marriage.isDivorced': { $exists: false } },
+    ],
   });
 
   if (groomApprovedMarriages >= 4) {
@@ -407,12 +412,23 @@ export const createMarriageApplication = async ({
   }
 
   // Check if bride is already in an approved marriage (strictly monogamous)
+  // Exclude divorced marriages
   const brideExistingMarriage = await Application.findOne({
     type: 'marriage',
     status: 'approved',
-    $or: [
-      { 'payload.marriage.bride.nationalId': brideNationalId.trim() },
-      { 'payload.marriage.groom.nationalId': brideNationalId.trim() }, // In case of data inconsistency
+    $and: [
+      {
+        $or: [
+          { 'payload.marriage.bride.nationalId': brideNationalId.trim() },
+          { 'payload.marriage.groom.nationalId': brideNationalId.trim() }, // In case of data inconsistency
+        ],
+      },
+      {
+        $or: [
+          { 'payload.marriage.isDivorced': { $ne: true } },
+          { 'payload.marriage.isDivorced': { $exists: false } },
+        ],
+      },
     ],
   }).lean();
 
@@ -591,6 +607,342 @@ export const createMarriageApplication = async ({
 };
 
 /**
+ * Create a Divorce application (CRVS - Islamic Law)
+ * Supports TALAQ (husband initiated) and KHUL (wife initiated)
+ * @param {Object} params - Application data
+ * @param {string} params.userId - User ID from token
+ * @param {string} params.marriageApplicationId - Marriage application ID to divorce
+ * @param {string} params.divorceType - "TALAQ" or "KHUL"
+ * @param {string} params.applicantNationalId - Applicant's National ID
+ * @param {Object} params.meherSettlement - Meher settlement details (required for KHUL)
+ * @param {boolean} params.meherSettlement.required - Whether meher settlement is required
+ * @param {number} params.meherSettlement.amountReturned - Amount returned (for KHUL)
+ * @param {string} params.meherSettlement.currency - Currency (for KHUL)
+ * @param {string} params.reason - Divorce reason (optional)
+ * @param {Object} params.divorceDetails - Divorce details
+ * @param {string} params.divorceDetails.date - Divorce date
+ * @param {string} params.divorceDetails.district - District
+ * @param {string} params.divorceDetails.sector - Sector
+ * @param {Array} params.documents - Document metadata array
+ * @returns {Promise<Object>} Created application
+ */
+export const createDivorceApplication = async ({
+  userId,
+  userNationalId, // From req.user.nationalId
+  marriageApplicationId,
+  divorceType,
+  witnesses,
+  meherStatus,
+  reason,
+  divorceDetails,
+}) => {
+  // Validate required fields
+  if (!userNationalId || typeof userNationalId !== 'string' || userNationalId.trim().length === 0) {
+    const error = new Error('User National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!marriageApplicationId || typeof marriageApplicationId !== 'string' || marriageApplicationId.trim().length === 0) {
+    const error = new Error('Marriage application ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!divorceType || typeof divorceType !== 'string') {
+    const error = new Error('Divorce type is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const normalizedDivorceType = divorceType.toUpperCase();
+  if (!['TALAQ', 'KHUL'].includes(normalizedDivorceType)) {
+    const error = new Error('Invalid divorce type. Must be TALAQ or KHUL');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!witnesses || !Array.isArray(witnesses) || witnesses.length !== 2) {
+    const error = new Error('Exactly two witnesses are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!meherStatus || typeof meherStatus !== 'object') {
+    const error = new Error('Meher status is required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (typeof meherStatus.wasGiven !== 'boolean') {
+    const error = new Error('Meher status wasGiven must be provided (true or false)');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (meherStatus.wasGiven === true) {
+    if (meherStatus.amount === undefined || meherStatus.amount === null) {
+      const error = new Error('Meher amount is required when wasGiven is true');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (typeof meherStatus.amount !== 'number' || meherStatus.amount < 0) {
+      const error = new Error('Meher amount must be a non-negative number');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    if (!meherStatus.currency || typeof meherStatus.currency !== 'string' || meherStatus.currency.trim().length === 0) {
+      const error = new Error('Meher currency is required when wasGiven is true');
+      error.statusCode = 400;
+      throw error;
+    }
+  }
+
+  if (normalizedDivorceType === 'KHUL' && meherStatus.wasGiven !== true) {
+    const error = new Error('Meher must be returned for Khul divorce.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!divorceDetails || typeof divorceDetails !== 'object') {
+    const error = new Error('Divorce details are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (!divorceDetails.date || !divorceDetails.district || !divorceDetails.sector) {
+    const error = new Error('Divorce details (date, district, sector) are required');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // STEP 1: Fetch marriage by marriageApplicationId
+  const marriage = await Application.findById(marriageApplicationId).lean();
+
+  if (!marriage) {
+    const error = new Error('Marriage not found');
+    error.statusCode = 404;
+    throw error;
+  }
+
+  // STEP 2: Marriage MUST exist and be APPROVED
+  if (marriage.status !== 'approved') {
+    const error = new Error('Divorce is only allowed for approved marriages.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  if (marriage.type !== 'marriage' || !marriage.payload?.marriage) {
+    const error = new Error('Invalid marriage application');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // STEP 3: Marriage MUST NOT already be divorced
+  const existingDivorce = await Application.findOne({
+    type: 'divorce',
+    status: 'approved',
+    'payload.divorce.marriageApplicationId': marriageApplicationId,
+  }).lean();
+
+  if (existingDivorce) {
+    const error = new Error('This marriage is already divorced.');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const marriagePayload = marriage.payload.marriage;
+  const husbandNationalId = marriagePayload.groom?.nationalId;
+  const wifeNationalId = marriagePayload.bride?.nationalId;
+
+  if (!husbandNationalId || !wifeNationalId) {
+    const error = new Error('Invalid marriage data: husband or wife National ID missing');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // STEP 2: Verify logged-in user MUST equal marriage.groom.nationalId
+  if (userNationalId.trim() !== husbandNationalId.trim()) {
+    const error = new Error('Only the husband can initiate divorce.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  // Verify husband (logged-in user) via NIRA
+  let husbandSnapshot;
+  try {
+    const husbandData = await fetchPersonByNationalId(userNationalId.trim());
+    husbandSnapshot = {
+      nationalId: husbandData.nationalId,
+      fullName: husbandData.fullName,
+      dateOfBirth: husbandData.dateOfBirth,
+      gender: husbandData.gender,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify husband: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate husband gender (must be MALE)
+  const husbandGender = (husbandSnapshot.gender || '').toUpperCase();
+  if (husbandGender !== 'MALE') {
+    const error = new Error('Husband must be male');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // Verify wife via NIRA
+  let wifeSnapshot;
+  try {
+    const wifeData = await fetchPersonByNationalId(wifeNationalId.trim());
+    wifeSnapshot = {
+      nationalId: wifeData.nationalId,
+      fullName: wifeData.fullName,
+      dateOfBirth: wifeData.dateOfBirth,
+      gender: wifeData.gender,
+    };
+  } catch (error) {
+    const niraError = new Error(`Failed to verify wife: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
+  }
+
+  // Validate wife gender (must be FEMALE)
+  const wifeGender = (wifeSnapshot.gender || '').toUpperCase();
+  if (wifeGender !== 'FEMALE') {
+    const error = new Error('Wife must be female');
+    error.statusCode = 400;
+    throw error;
+  }
+
+  // STEP 4: Verify witnesses (exactly 2, both MALE, not husband or wife)
+  const witnessSnapshots = [];
+  const witnessNationalIds = new Set();
+  const prohibitedIds = new Set([
+    userNationalId.trim(), // husband
+    wifeNationalId.trim(), // wife
+  ]);
+
+  for (let i = 0; i < witnesses.length; i++) {
+    const witness = witnesses[i];
+    if (!witness.nationalId || typeof witness.nationalId !== 'string' || witness.nationalId.trim().length === 0) {
+      const error = new Error(`Witness ${i + 1} National ID is required`);
+      error.statusCode = 400;
+      throw error;
+    }
+
+    const witnessId = witness.nationalId.trim();
+
+    // Check for duplicates
+    if (witnessNationalIds.has(witnessId)) {
+      const error = new Error('Witnesses must have different National IDs');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Check witnesses are not husband or wife
+    if (prohibitedIds.has(witnessId)) {
+      const error = new Error('Witnesses cannot be the husband or wife');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    // Use snapshot from frontend if provided, otherwise fetch from NIRA
+    let witnessSnapshot;
+    if (witness.snapshot && typeof witness.snapshot === 'object') {
+      // Use snapshot from frontend
+      witnessSnapshot = {
+        nationalId: witness.snapshot.nationalId || witnessId,
+        fullName: witness.snapshot.fullName || '',
+        dateOfBirth: witness.snapshot.dateOfBirth || null,
+        gender: witness.snapshot.gender || null,
+        status: witness.snapshot.status || null,
+      };
+    } else {
+      // Fetch from NIRA if snapshot not provided
+      try {
+        const witnessData = await fetchPersonByNationalId(witnessId);
+        witnessSnapshot = {
+          nationalId: witnessData.nationalId,
+          fullName: witnessData.fullName,
+          dateOfBirth: witnessData.dateOfBirth,
+          gender: witnessData.gender,
+          status: witnessData.status,
+        };
+      } catch (error) {
+        const niraError = new Error(`Failed to verify witness ${i + 1}: ${error.message}`);
+        niraError.statusCode = error.statusCode || 400;
+        throw niraError;
+      }
+    }
+
+    // Validate witness gender (must be MALE)
+    const witnessGender = (witnessSnapshot.gender || '').toUpperCase();
+    if (witnessGender !== 'MALE') {
+      const error = new Error('Divorce requires two male witnesses.');
+      error.statusCode = 400;
+      throw error;
+    }
+
+    witnessSnapshots.push(witnessSnapshot);
+    witnessNationalIds.add(witnessId);
+  }
+
+  // Create application payload with Divorce structure
+  const payload = {
+    divorce: {
+      marriageApplicationId: marriageApplicationId.trim(),
+      divorceType: normalizedDivorceType,
+      applicant: {
+        nationalId: userNationalId.trim(),
+        snapshot: husbandSnapshot,
+      },
+      husband: {
+        nationalId: husbandNationalId.trim(),
+        snapshot: husbandSnapshot,
+      },
+      wife: {
+        nationalId: wifeNationalId.trim(),
+        snapshot: wifeSnapshot,
+      },
+      witnesses: witnessSnapshots.map((snapshot) => ({
+        nationalId: snapshot.nationalId,
+        snapshot: snapshot,
+      })),
+      meherStatus: {
+        wasGiven: meherStatus.wasGiven,
+        amount: meherStatus.wasGiven ? meherStatus.amount : null,
+        currency: meherStatus.wasGiven ? meherStatus.currency.trim() : null,
+      },
+      reason: reason || null,
+      divorceDetails: {
+        date: divorceDetails.date,
+        district: divorceDetails.district.trim(),
+        sector: divorceDetails.sector.trim(),
+      },
+    },
+  };
+
+  // Create application with status 'pending' (no documents)
+  const application = await Application.create({
+    userId,
+    applicationType: 'DIVORCE',
+    type: 'divorce',
+    payload,
+    documents: [], // No document uploads for divorce
+    status: 'pending',
+  });
+
+  // Populate userId to return user info
+  await application.populate('userId', 'fullName email');
+
+  return application;
+};
+
+/**
  * Get all applications for a specific user
  * @param {string} userId - User ID
  * @returns {Promise<Array>} List of user's applications, sorted by newest first
@@ -699,6 +1051,26 @@ export const approveApplication = async (applicationId, adminId) => {
     // No automatic certificate creation - user must request it via Generate Certificate
     // No FamilyMember creation needed in CRVS model
     // Islamic validation already done during application creation
+  } else if (type === 'divorce') {
+    // Divorce approval logic
+    const divorcePayload = application.payload?.divorce;
+    if (divorcePayload && divorcePayload.marriageApplicationId) {
+      // Mark related marriage as DIVORCED (logical flag)
+      await Application.findByIdAndUpdate(
+        divorcePayload.marriageApplicationId,
+        {
+          $set: {
+            'payload.marriage.isDivorced': true,
+            'payload.marriage.divorcedAt': new Date(),
+            'payload.marriage.divorceApplicationId': applicationId,
+          },
+        },
+        { new: false },
+      );
+
+      // Bride becomes eligible for new marriage (handled by checking isDivorced flag)
+      // Groom wife-count decreases by 1 (handled by checking isDivorced flag in marriage validation)
+    }
   }
 
   // Update application status to approved

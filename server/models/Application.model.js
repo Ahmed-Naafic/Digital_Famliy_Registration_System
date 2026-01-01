@@ -38,7 +38,7 @@ const applicationSchema = new Schema(
     },
     applicationType: {
       type: String,
-      enum: ['BIRTH', 'MARRIAGE'],
+      enum: ['BIRTH', 'MARRIAGE', 'DIVORCE'],
       default: 'BIRTH',
     },
     type: {

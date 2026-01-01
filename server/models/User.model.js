@@ -19,6 +19,13 @@ const userSchema = new Schema(
       lowercase: true,
       trim: true,
     },
+    nationalId: {
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
+      index: true,
+    },
     phoneNumber: {
       type: String,
       trim: true,

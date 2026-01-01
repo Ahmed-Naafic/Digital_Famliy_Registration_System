@@ -266,11 +266,15 @@ function addDivorceCertificateContent(doc, details, yPos) {
 
   const fields = [
     { label: 'Divorce Date', value: details.divorceDate ? formatDate(new Date(details.divorceDate)) : 'N/A' },
-    { label: 'Court / Authority', value: details.court || 'Family Court' },
+    { label: 'Divorce Type', value: details.divorceType || 'TALAQ' },
   ];
 
-  if (details.reasonCode) {
-    fields.push({ label: 'Reason Code', value: details.reasonCode });
+  if (details.district && details.sector) {
+    fields.push({ label: 'Location', value: `${details.district}, ${details.sector}` });
+  }
+
+  if (details.reason) {
+    fields.push({ label: 'Reason', value: details.reason });
   }
 
   fields.forEach((field) => {

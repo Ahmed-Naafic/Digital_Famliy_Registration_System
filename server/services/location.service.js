@@ -50,3 +50,4 @@ export const getRegions = async () => {
   return regions.sort();
 };
 
+

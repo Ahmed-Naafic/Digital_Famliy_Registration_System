@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.model.js';
 import { hashPassword, comparePassword } from '../utils/password.util.js';
+import { fetchPersonByNationalId } from './nira.service.js';
 
 const JWT_EXPIRES_IN = '7d';
 
@@ -11,13 +12,37 @@ const buildUserResponse = (user) => ({
   role: user.role,
 });
 
-export const registerUser = async ({ fullName, email, phoneNumber, password }) => {
-  const existingUser = await User.findOne({ email });
+export const registerUser = async ({ fullName, email, phoneNumber, password, nationalId }) => {
+  // Validate required fields
+  if (!nationalId || typeof nationalId !== 'string' || nationalId.trim().length === 0) {
+    const error = new Error('National ID is required');
+    error.statusCode = 400;
+    throw error;
+  }
 
-  if (existingUser) {
+  // Check for existing email
+  const existingUserByEmail = await User.findOne({ email });
+  if (existingUserByEmail) {
     const error = new Error('Email is already in use');
     error.statusCode = 409;
     throw error;
+  }
+
+  // Check for existing nationalId
+  const existingUserByNationalId = await User.findOne({ nationalId: nationalId.trim() });
+  if (existingUserByNationalId) {
+    const error = new Error('National ID is already registered');
+    error.statusCode = 409;
+    throw error;
+  }
+
+  // Verify National ID via NIRA
+  try {
+    await fetchPersonByNationalId(nationalId.trim());
+  } catch (error) {
+    const niraError = new Error(`National ID verification failed: ${error.message}`);
+    niraError.statusCode = error.statusCode || 400;
+    throw niraError;
   }
 
   const passwordHash = await hashPassword(password);
@@ -25,6 +50,7 @@ export const registerUser = async ({ fullName, email, phoneNumber, password }) =
   const user = await User.create({
     fullName,
     email,
+    nationalId: nationalId.trim(),
     phoneNumber,
     passwordHash,
     role: 'citizen',
@@ -40,6 +66,7 @@ export const registerUser = async ({ fullName, email, phoneNumber, password }) =
     {
       sub: user._id.toString(),
       role: user.role,
+      nationalId: user.nationalId,
     },
     process.env.JWT_SECRET,
     {
@@ -81,6 +108,7 @@ export const loginUser = async ({ email, password }) => {
     {
       sub: user._id.toString(),
       role: user.role,
+      nationalId: user.nationalId || null, // null for backward compatibility with old users
     },
     process.env.JWT_SECRET,
     {
